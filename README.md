@@ -35,8 +35,9 @@ controleert prijzen en verstuurt mails.
 1. **bol affiliate-account** aanmaken op https://affiliate.bol.com (gratis, goedkeuring duurt
    doorgaans enkele dagen; een werkende site helpt, dus deploy eerst). Vraag daarna in het
    dashboard **API-toegang** aan → je krijgt `Client ID` + `Client Secret`. Noteer ook je **site-id**.
-2. **Supabase**: maak een project, voer `supabase/migrations/0001_init.sql` uit in de SQL Editor.
-   Kopieer `Project URL` en `service_role` key.
+2. **Supabase**: het schema uit `supabase/migrations/0001_init.sql` is al toegepast op project
+   `vraagtest` (https://bicofsmdeariabifvqgp.supabase.co). Kopieer daar `Project URL` en `service_role` key.
+   Voor een ander project: voer het SQL-bestand uit in de SQL Editor.
 3. **Resend**: maak een account, verifieer je domein, maak een API key.
 4. **Vercel**: importeer deze repo, zet de variabelen uit `.env.example` als Environment Variables
    (inclusief `CRON_SECRET`, een willekeurige lange string). Vercel roept `/api/cron/check` aan
