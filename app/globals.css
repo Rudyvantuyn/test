@@ -24,5 +24,12 @@ form.watch button[disabled] { opacity:.6 }
 .btn { display:inline-block; padding:10px 16px; border-radius:8px; background:var(--brand); color:#fff; text-decoration:none; font-weight:600 }
 small, .muted { color:var(--muted) }
 .chart { width:100%; height:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0 }
-.filters { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 16px } .filters a { padding:4px 10px; border:1px solid var(--line); border-radius:999px; text-decoration:none; font-size:.9rem }
-.filters a.on { background:var(--brand); color:#fff; border-color:var(--brand) }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 16px } .chips a { padding:4px 10px; border:1px solid var(--line); border-radius:999px; text-decoration:none; font-size:.9rem }
+.chips a.on { background:var(--brand); color:#fff; border-color:var(--brand) }
+form.filters { display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding:12px; border:1px solid var(--line); border-radius:12px; margin:0 0 16px }
+form.filters label { display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:var(--muted) }
+form.filters select, form.filters input { padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--fg); font-size:.9rem }
+form.filters button { padding:8px 14px; border:0; border-radius:8px; background:var(--brand); color:#fff; font-weight:600; cursor:pointer }
+.opts { display:flex; gap:14px; flex-wrap:wrap; font-size:.9rem; color:var(--muted) } .opts label { display:flex; gap:6px; align-items:center }
+.opts select { padding:4px 6px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--fg) }
+table { font-size:.95rem } td small { color:var(--muted) }

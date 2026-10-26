@@ -32,6 +32,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
           <nav>
             <Link href={`/${locale}`}>{d.siteName}</Link>
             <Link href={`/${locale}/deals`}>{d.navDeals}</Link>
+            <Link href={`/${locale}/stores`}>{d.navStores}</Link>
             <span className="lang">
               {locales.map((l) => (
                 <Link key={l} href={`/${l}`} hrefLang={l}>{l}</Link>

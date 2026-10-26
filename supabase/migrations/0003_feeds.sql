@@ -4,7 +4,7 @@ alter table products add constraint products_retailer_check check (retailer in (
 
 create table feed_sources (
   id int generated always as identity primary key,
-  network text not null check (network in ('awin','tradedoubler','daisycon','partnerize','cj')),
+  network text not null check (network in ('awin','tradedoubler','daisycon','tradetracker','partnerize','impact','cj')),
   merchant text not null,            -- bv. 'MediaMarkt DE'
   merchant_domain text not null,     -- bv. 'mediamarkt.de'
   country char(2) not null,

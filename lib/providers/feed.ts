@@ -1,58 +1,59 @@
 /**
- * Feed-provider: prijzen uit productfeeds van affiliate-netwerken (Awin, Tradedoubler, Daisycon,
- * Partnerize, CJ). Dit is de schaalbare, toegestane route voor winkels die bots blokkeren
- * (MediaMarkt, Currys, Fnac, Otto, ...). De feeds worden door /api/cron/feeds in `feed_offers`
- * geladen; deze provider leest alleen uit de database en doet geen HTTP-verzoeken.
+ * Feed-provider: prijzen, levertijd en verzendkosten uit productfeeds van affiliate-netwerken.
+ * Geladen door /api/cron/feeds in `feed_offers`; deze provider leest alleen uit de database.
  */
 import { createHash } from "node:crypto";
 import { db } from "../supabase";
-import type { PriceProvider, ResolvedProduct } from "./types";
+import { normalizeCondition } from "../delivery";
+import type { OfferSnapshot, PriceProvider, ResolvedProduct } from "./types";
 
 export const urlHash = (url: string) => createHash("sha256").update(url).digest("hex").slice(0, 20);
 
-/** Normaliseert een productlink zodat feed-URL en gebruikers-URL overeenkomen. */
 export function normalizeUrl(input: string): string {
   const u = new URL(input);
   u.hash = "";
   u.hostname = u.hostname.toLowerCase().replace(/^www\./, "");
   for (const k of [...u.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref|tag|aff|awc|tduid|cid|pid|sid)/i.test(k)) u.searchParams.delete(k);
-  let s = u.toString().replace(/\/+$/, "");
-  s = s.replace(/^https?:\/\//, "");
-  return s;
+  return u.toString().replace(/\/+$/, "").replace(/^https?:\/\//, "");
 }
 
 export type FeedOffer = {
-  id: number;
-  source_id: number;
-  url_hash: string;
-  merchant_product_id: string;
-  ean: string | null;
-  title: string;
-  url: string;
-  deeplink: string;
-  price: number;
-  currency: string;
-  image_url: string | null;
-  country: string;
+  id: number; source_id: number; url_hash: string; merchant_product_id: string; ean: string | null; title: string;
+  url: string; deeplink: string; price: number; currency: string; image_url: string | null; shipping_cost: number | null;
+  delivery_text: string | null; delivery_min_days: number | null; delivery_max_days: number | null; condition: string | null;
+  in_stock: boolean; merchant: string | null; updated_at: string;
+  feed_sources: { country: string; merchant: string } | { country: string; merchant: string }[];
 };
 
+const COLS = "id,source_id,url_hash,merchant_product_id,ean,title,url,deeplink,price,currency,image_url,shipping_cost,delivery_text,delivery_min_days,delivery_max_days,condition,in_stock,merchant,updated_at,feed_sources!inner(country,merchant)";
+const src = (o: FeedOffer) => (Array.isArray(o.feed_sources) ? o.feed_sources[0] : o.feed_sources);
+
 export async function findFeedOffer(url: URL): Promise<FeedOffer | null> {
-  const hash = urlHash(normalizeUrl(url.toString()));
-  const { data } = await db()
-    .from("feed_offers")
-    .select("id,source_id,url_hash,merchant_product_id,ean,title,url,deeplink,price,currency,image_url,feed_sources!inner(country)")
-    .eq("url_hash", hash)
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  const src = data.feed_sources as unknown as { country: string } | { country: string }[];
-  return { ...(data as unknown as Omit<FeedOffer, "country">), country: Array.isArray(src) ? src[0].country : src.country };
+  const { data } = await db().from("feed_offers").select(COLS).eq("url_hash", urlHash(normalizeUrl(url.toString()))).limit(1).maybeSingle();
+  return (data as unknown as FeedOffer) ?? null;
+}
+
+export async function findFeedOffersByEan(ean: string, countries: string[]): Promise<FeedOffer[]> {
+  let q = db().from("feed_offers").select(COLS).eq("ean", ean).eq("in_stock", true).limit(50);
+  if (countries.length) q = q.in("feed_sources.country", countries);
+  const { data } = await q;
+  return ((data ?? []) as unknown as FeedOffer[]);
+}
+
+export function snapshot(o: FeedOffer): OfferSnapshot {
+  const stale = Date.now() - +new Date(o.updated_at) > 3 * 86_400_000;
+  return {
+    price: Number(o.price), shippingCost: o.shipping_cost === null ? null : Number(o.shipping_cost),
+    deliveryMinDays: o.delivery_min_days, deliveryMaxDays: o.delivery_max_days, deliveryText: o.delivery_text,
+    condition: normalizeCondition(o.condition) ?? "new", inStock: o.in_stock && !stale, deeplink: o.deeplink,
+    merchant: o.merchant ?? src(o).merchant,
+  };
 }
 
 export function offerToProduct(o: FeedOffer): ResolvedProduct {
   return {
-    retailer: "feed", country: o.country, externalId: o.url_hash, ean: o.ean, title: o.title,
-    url: o.url, imageUrl: o.image_url, currency: o.currency, price: Number(o.price),
+    retailer: "feed", country: src(o).country, externalId: o.url_hash, ean: o.ean, title: o.title,
+    url: o.url, imageUrl: o.image_url, currency: o.currency, ...snapshot(o),
   };
 }
 
@@ -69,32 +70,22 @@ export const feedProvider: PriceProvider = {
     return offerToProduct(o);
   },
 
-  async fetchPrices(items) {
-    const out = new Map<string, number | null>();
-    const supa = db();
+  async fetchOffers(items) {
+    const out = new Map<string, OfferSnapshot | null>();
     for (let i = 0; i < items.length; i += 500) {
       const chunk = items.slice(i, i + 500).map((x) => x.externalId);
-      const { data, error } = await supa.from("feed_offers").select("url_hash,price,updated_at").in("url_hash", chunk);
+      const { data, error } = await db().from("feed_offers").select(COLS).in("url_hash", chunk);
       if (error) { console.error("feed fetch", error); continue; }
       const seen = new Set<string>();
-      for (const r of data ?? []) {
-        seen.add(r.url_hash);
-        // Verouderde feedrij (> 3 dagen niet ververst) = aanbod waarschijnlijk weg
-        const stale = Date.now() - +new Date(r.updated_at) > 3 * 86_400_000;
-        out.set(r.url_hash, stale ? null : Number(r.price));
-      }
+      for (const r of (data ?? []) as unknown as FeedOffer[]) { seen.add(r.url_hash); out.set(r.url_hash, snapshot(r)); }
       for (const h of chunk) if (!seen.has(h)) out.set(h, null);
     }
     return out;
   },
 
-  affiliateLink(ref) {
-    // Deeplink staat in feed_offers; /go haalt die op via feedDeeplink(). Fallback: ruwe URL.
-    return ref.url;
+  async findByEan(ean, countries) {
+    return (await findFeedOffersByEan(ean, countries)).map(offerToProduct);
   },
-};
 
-export async function feedDeeplink(urlHashKey: string): Promise<string | null> {
-  const { data } = await db().from("feed_offers").select("deeplink").eq("url_hash", urlHashKey).maybeSingle();
-  return data?.deeplink ?? null;
-}
+  affiliateLink(ref) { return ref.url; },
+};

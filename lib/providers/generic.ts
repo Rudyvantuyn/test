@@ -1,15 +1,22 @@
 /**
- * Generieke provider: leest schema.org Product / OpenGraph-prijsdata van elke webshop
- * (Coolblue, MediaMarkt, Zalando, Otto, Fnac, Currys, ...). Laag volume: 1 verzoek per
- * product per cron-run. Affiliate-links via AFFILIATE_LINK_TEMPLATES (Awin, Tradedoubler, ...).
+ * Generieke provider: leest schema.org Product / OpenGraph-data (prijs, voorraad, levertijd,
+ * verzendkosten) van elke webshop. Laag volume: 1 verzoek per product per cron-run.
+ * Affiliate: per-domein template (AFFILIATE_LINK_TEMPLATES) of catch-all (GENERIC_AFFILIATE_REDIRECT,
+ * bv. Skimlinks/Sovrn die ~50.000 winkels automatisch monetariseren).
  */
 import { createHash } from "node:crypto";
-import { countryFromHost, currencyForCountry, type PriceProvider, type ProductRef, type ResolvedProduct, ProviderError } from "./types";
+import { normalizeCondition, parseDeliveryText } from "../delivery";
+import { retailerForHost } from "../retailers";
+import { countryFromHost, currencyForCountry, type OfferSnapshot, type PriceProvider, ProviderError } from "./types";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const TIMEOUT_MS = 12_000;
 
-type Parsed = { title: string | null; price: number | null; currency: string | null; image: string | null; canonical: string | null };
+export type Parsed = {
+  title: string | null; price: number | null; currency: string | null; image: string | null; canonical: string | null;
+  ean: string | null; inStock: boolean | null; condition: string | null; shippingCost: number | null;
+  deliveryMin: number | null; deliveryMax: number | null; deliveryText: string | null; brand: string | null;
+};
 
 function toNumber(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
@@ -17,8 +24,7 @@ function toNumber(v: unknown): number | null {
   const s = v.replace(/[^\d.,]/g, "");
   if (!s) return null;
   const normalized = s.includes(",") && (!s.includes(".") || s.lastIndexOf(",") > s.lastIndexOf("."))
-    ? s.replace(/\./g, "").replace(",", ".")
-    : s.replace(/,/g, "");
+    ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 }
@@ -31,33 +37,52 @@ function walk(node: unknown, visit: (o: Record<string, unknown>) => void) {
   }
 }
 
+const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 function meta(html: string, attr: "property" | "name" | "itemprop", key: string): string | null {
   const re = new RegExp(`<meta[^>]+${attr}=["']${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>`, "i");
-  const tag = html.match(re)?.[0];
-  const c = tag?.match(/content=["']([^"']*)["']/i)?.[1];
+  const c = html.match(re)?.[0]?.match(/content=["']([^"']*)["']/i)?.[1];
   return c ? decode(c) : null;
 }
-const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+
+const str = (v: unknown): string | null => (typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null);
+const QV = (v: unknown): number | null => (v && typeof v === "object" ? toNumber((v as Record<string, unknown>).value ?? (v as Record<string, unknown>).maxValue) : toNumber(v));
 
 export function parseProductHtml(html: string): Parsed {
-  const out: Parsed = { title: null, price: null, currency: null, image: null, canonical: null };
+  const out: Parsed = {
+    title: null, price: null, currency: null, image: null, canonical: null, ean: null, inStock: null,
+    condition: null, shippingCost: null, deliveryMin: null, deliveryMax: null, deliveryText: null, brand: null,
+  };
   for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     let data: unknown;
     try { data = JSON.parse(m[1].trim()); } catch { continue; }
     walk(data, (o) => {
-      const t = o["@type"];
-      const types = Array.isArray(t) ? t : [t];
-      if (!types.some((x) => typeof x === "string" && /product/i.test(x))) return;
-      if (out.price !== null) return;
-      out.title ??= typeof o.name === "string" ? o.name : null;
+      const types = Array.isArray(o["@type"]) ? o["@type"] : [o["@type"]];
+      if (!types.some((x) => typeof x === "string" && /product/i.test(x)) || out.price !== null) return;
+      out.title ??= str(o.name);
+      out.brand ??= str(o.brand) ?? str((o.brand as { name?: unknown })?.name);
       const img = o.image;
-      out.image ??= typeof img === "string" ? img : Array.isArray(img) ? (typeof img[0] === "string" ? img[0] : (img[0] as { url?: string })?.url ?? null) : (img as { url?: string })?.url ?? null;
-      const offers = Array.isArray(o.offers) ? o.offers[0] : o.offers;
-      if (offers && typeof offers === "object") {
-        const of = offers as Record<string, unknown>;
-        const nested = Array.isArray(of.offers) ? (of.offers[0] as Record<string, unknown>) : null;
-        out.price = toNumber(of.price ?? of.lowPrice ?? nested?.price ?? (of.priceSpecification as { price?: unknown })?.price);
-        out.currency = (of.priceCurrency ?? nested?.priceCurrency ?? null) as string | null;
+      out.image ??= str(img) ?? (Array.isArray(img) ? (img[0] as { url?: string })?.url ?? null : (img as { url?: string })?.url ?? null);
+      out.ean ??= [o.gtin13, o.gtin, o.gtin14, o.ean].map(str).find((x) => x && /^\d{13}$/.test(x)) ?? null;
+      const offersRaw = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+      if (!offersRaw || typeof offersRaw !== "object") return;
+      let of = offersRaw as Record<string, unknown>;
+      if (Array.isArray(of.offers) && of.offers[0]) of = { ...of, ...(of.offers[0] as Record<string, unknown>) };
+      out.price = toNumber(of.price ?? of.lowPrice ?? (of.priceSpecification as { price?: unknown })?.price);
+      out.currency = str(of.priceCurrency) ?? str((of.priceSpecification as { priceCurrency?: unknown })?.priceCurrency);
+      const av = str(of.availability);
+      if (av) out.inStock = /InStock|LimitedAvailability|OnlineOnly|PreSale|InStoreOnly/i.test(av);
+      out.condition = str(of.itemCondition)?.replace(/^.*\//, "") ?? null;
+      const sd = Array.isArray(of.shippingDetails) ? of.shippingDetails[0] : of.shippingDetails;
+      if (sd && typeof sd === "object") {
+        const s = sd as Record<string, unknown>;
+        out.shippingCost = QV(s.shippingRate);
+        const dt = s.deliveryTime as Record<string, unknown> | undefined;
+        if (dt) {
+          const h = (dt.handlingTime ?? {}) as Record<string, unknown>, tr = (dt.transitTime ?? {}) as Record<string, unknown>;
+          const min = (toNumber(h.minValue) ?? 0) + (toNumber(tr.minValue) ?? 0);
+          const max = (toNumber(h.maxValue) ?? toNumber(h.minValue) ?? 0) + (toNumber(tr.maxValue) ?? toNumber(tr.minValue) ?? 0);
+          if (max > 0) { out.deliveryMin = min; out.deliveryMax = max; }
+        }
       }
     });
   }
@@ -66,6 +91,15 @@ export function parseProductHtml(html: string): Parsed {
   out.currency ??= meta(html, "property", "product:price:currency") ?? meta(html, "property", "og:price:currency") ?? meta(html, "itemprop", "priceCurrency");
   out.image ??= meta(html, "property", "og:image");
   out.canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] ?? meta(html, "property", "og:url");
+  const avail = meta(html, "property", "product:availability") ?? meta(html, "property", "og:availability");
+  if (out.inStock === null && avail) out.inStock = /instock|in stock|available/i.test(avail);
+  out.condition ??= meta(html, "property", "product:condition");
+  // levertijd-tekst uit zichtbare tekst (bv. "Morgen in huis", "Lieferung in 1-2 Werktagen"); niet bij uitverkocht
+  if (out.deliveryMax === null && out.inStock !== false) {
+    const txt = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
+    const m = txt.match(/(morgen in huis|vandaag (?:nog )?besteld,? morgen (?:in huis|bezorgd)|lieferung (?:in|innerhalb) [^.<]{1,30}(?:werktag|tag)\w*|(?:bezorgd|geleverd) (?:binnen|in) \d+(?:\s*[-–]\s*\d+)? (?:werk)?dag\w*|(?:delivery|delivered) (?:in|within) \d+(?:\s*[-–]\s*\d+)? (?:business |working )?days?|next[- ]day delivery|livraison (?:sous|en) \d+(?:\s*[-–]\s*\d+)? jours?)/i);
+    if (m) { out.deliveryText = m[1]; const d = parseDeliveryText(m[1]); out.deliveryMin = d.min; out.deliveryMax = d.max; }
+  }
   return out;
 }
 
@@ -75,25 +109,29 @@ async function fetchHtml(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
       headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml", "accept-language": "en,nl;q=0.8,de;q=0.7" },
-      signal: ctrl.signal,
-      cache: "no-store",
-      redirect: "follow",
+      signal: ctrl.signal, cache: "no-store", redirect: "follow",
     });
     if (res.status === 404 || res.status === 410) throw new ProviderError(404, "Pagina niet gevonden");
-    if (res.status === 403 || res.status === 429) throw new ProviderError(429, "Winkel blokkeert verzoeken");
+    if (res.status === 403 || res.status === 429 || res.status === 503) throw new ProviderError(429, "Winkel blokkeert verzoeken");
     if (!res.ok) throw new ProviderError(res.status, `Winkel gaf ${res.status}`);
     return await res.text();
-  } finally {
-    clearTimeout(t);
-  }
+  } finally { clearTimeout(t); }
 }
 
-const cleanUrl = (u: URL) => {
+export const cleanUrl = (u: URL) => {
   const c = new URL(u.toString());
-  for (const k of [...c.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref|tag|aff)/i.test(k)) c.searchParams.delete(k);
+  for (const k of [...c.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref|tag|aff|awc|tduid)/i.test(k)) c.searchParams.delete(k);
   c.hash = "";
   return c.toString();
 };
+
+function toSnapshot(p: Parsed, host: string): OfferSnapshot {
+  return {
+    price: p.price!, shippingCost: p.shippingCost, deliveryMinDays: p.deliveryMin, deliveryMaxDays: p.deliveryMax,
+    deliveryText: p.deliveryText, condition: normalizeCondition(p.condition) ?? "new", inStock: p.inStock ?? true,
+    merchant: retailerForHost(host)?.name ?? host.replace(/^www\./, ""),
+  };
+}
 
 export const genericProvider: PriceProvider = {
   id: "generic",
@@ -106,36 +144,39 @@ export const genericProvider: PriceProvider = {
     const html = await fetchHtml(url.toString());
     const p = parseProductHtml(html);
     if (!p.title || p.price === null) {
-      throw new ProviderError(422, "Kon geen prijs vinden op deze pagina. Deze winkel wordt (nog) niet ondersteund.");
+      const known = retailerForHost(url.hostname);
+      throw new ProviderError(422, known
+        ? `${known.name} levert geen productdata aan onze robot. Deze winkel wordt via het ${known.network}-netwerk gekoppeld; probeer het later opnieuw.`
+        : "Kon geen prijs vinden op deze pagina. Deze winkel wordt (nog) niet ondersteund.");
     }
     const canonical = cleanUrl(p.canonical ? new URL(p.canonical, url) : url);
-    const country = countryFromHost(new URL(canonical).hostname);
+    const host = new URL(canonical).hostname;
+    const country = countryFromHost(host);
     return {
       retailer: "generic", country,
       externalId: createHash("sha256").update(canonical).digest("hex").slice(0, 20),
-      ean: null, title: p.title.slice(0, 300), url: canonical, imageUrl: p.image,
-      currency: (p.currency ?? currencyForCountry[country] ?? "EUR").toUpperCase(), price: p.price,
+      ean: p.ean, title: p.title.slice(0, 300), url: canonical, imageUrl: p.image,
+      currency: (p.currency ?? currencyForCountry[country] ?? "EUR").toUpperCase(),
+      ...toSnapshot(p, host),
     };
   },
 
-  async fetchPrices(items) {
-    const out = new Map<string, number | null>();
-    const CONCURRENCY = 3;
+  async fetchOffers(items) {
+    const out = new Map<string, OfferSnapshot | null>();
     let i = 0;
-    await Promise.all(
-      Array.from({ length: CONCURRENCY }, async () => {
-        while (i < items.length) {
-          const it = items[i++];
-          try {
-            out.set(it.externalId, parseProductHtml(await fetchHtml(it.url)).price);
-          } catch (e) {
-            if (e instanceof ProviderError && e.status === 404) out.set(it.externalId, null);
-            else console.error("generic fetch", it.url, e instanceof Error ? e.message : e);
-          }
-          await new Promise((r) => setTimeout(r, 400));
+    await Promise.all(Array.from({ length: 3 }, async () => {
+      while (i < items.length) {
+        const it = items[i++];
+        try {
+          const p = parseProductHtml(await fetchHtml(it.url));
+          out.set(it.externalId, p.price === null ? null : toSnapshot(p, new URL(it.url).hostname));
+        } catch (e) {
+          if (e instanceof ProviderError && e.status === 404) out.set(it.externalId, null);
+          else console.error("generic fetch", it.url, e instanceof Error ? e.message : e);
         }
-      }),
-    );
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }));
     return out;
   },
 
@@ -143,7 +184,7 @@ export const genericProvider: PriceProvider = {
     let templates: Record<string, string> = {};
     try { templates = JSON.parse(process.env.AFFILIATE_LINK_TEMPLATES ?? "{}"); } catch { /* ignore */ }
     const host = new URL(ref.url).hostname.replace(/^www\./, "");
-    const tpl = templates[host] ?? Object.entries(templates).find(([d]) => host.endsWith(`.${d}`))?.[1];
+    const tpl = templates[host] ?? Object.entries(templates).find(([d]) => host.endsWith(`.${d}`))?.[1] ?? process.env.GENERIC_AFFILIATE_REDIRECT;
     if (!tpl) return ref.url;
     return tpl.replace("{url_enc}", encodeURIComponent(ref.url)).replace("{url}", ref.url);
   },

@@ -18,12 +18,22 @@ Vercel Cron ─▶ /api/cron/feeds (2x per dag) → feeds downloaden en upserten
 /go/<key> ─▶ affiliate-redirect per winkel/land + klikregistratie
 ```
 
-| Provider | Landen | Data | Prijsgeschiedenis publiek | Status |
-| --- | --- | --- | --- | --- |
-| `bol` | NL, BE | Officiële affiliate-API, 1200 calls/uur | ja | klaar, wacht op API-keys |
-| `amazon` | US, CA, MX, BR, GB, DE, FR, IT, ES, NL, BE, SE, PL, TR, AE, SA, EG, IN, JP, AU, SG | PA-API 5.0, GetItems 10 ASINs/call, SigV4 | **nee** (licentie verbiedt dit) | klaar, wacht op Associates-keys |
-| `feed` | elk land | Productfeeds met prijs + deeplink | ja | klaar, feeds toevoegen in `feed_sources` |
-| `generic` | elk land | HTML van de productpagina | ja | werkt bij o.a. Coolblue; grote ketens blokkeren bots |
+| Provider | Landen | Data | Levertijd/verzending | Prijsgeschiedenis publiek | Status |
+| --- | --- | --- | --- | --- | --- |
+| `bol` | NL, BE | Officiële affiliate-API, 1200 calls/uur | bezorgdatum + conditie uit API | ja | klaar, wacht op API-keys |
+| `amazon` | 21 marketplaces (US … JP) | PA-API 5.0, GetItems 10 ASINs/call, SigV4 | Prime = morgen, anders 2–5 dagen; conditie; EAN | **nee** (licentie) | klaar, wacht op Associates-keys |
+| `ebay` | 18 eBay-sites | Browse API (gratis app-keys) + EPN | bezorgdatum, verzendkosten, conditie, EAN uit API | ja | klaar, wacht op app-keys + campaign-id |
+| `feed` | elk land | Productfeeds (Awin, Tradedoubler, Daisycon, TradeTracker, Partnerize, Impact, CJ) | levertijd-tekst, verzendkosten, voorraad, conditie uit feed | ja | klaar, feeds toevoegen in `feed_sources` |
+| `generic` | elk land | schema.org/OpenGraph van de productpagina | `shippingDetails`, `availability`, zichtbare tekst ("Morgen in huis") | ja | werkt bij o.a. Coolblue; grote ketens blokkeren bots → feed |
+
+**Vangnet voor alle overige winkels:** `GENERIC_AFFILIATE_REDIRECT` (Skimlinks of Sovrn Commerce) maakt
+van elke link naar een van hun ~50.000 aangesloten winkels automatisch een affiliate-link. Zo verdien je
+ook aan winkels waar je geen eigen programma voor hebt.
+
+**Winkelregister:** `lib/retailers.ts` bevat ~100 verkoopsites in 40+ landen met netwerk en indicatieve
+commissie (Amazon, eBay, bol, AliExpress, Temu, SHEIN, Etsy, Apple, Nike, Zalando, IKEA, Walmart, Best Buy,
+Target, MediaMarkt, Otto, Currys, Argos, Fnac, Cdiscount, Allegro, Flipkart, Mercado Libre, Lazada, …).
+Zichtbaar op `/{locale}/stores?country=DE`.
 
 Getest op 26-10-2026 vanaf een datacenter-IP: Coolblue geeft nette schema.org-data (werkt),
 MediaMarkt, Currys en Fnac geven 403/captcha (Cloudflare). Voor die winkels is de feed-route de
@@ -35,10 +45,11 @@ tracking-links. Dat is toegestaan, stabiel en schaalt naar honderden winkels.
 | Pad | Functie |
 | --- | --- |
 | `/{nl,en,de}` | Landing + formulier |
-| `/{locale}/p/{retailer}-{LAND}-{id}` | Productpagina: prijs, grafiek (behalve Amazon), badge "laagste ooit", alert-formulier |
-| `/{locale}/deals?country=DE` | Grootste dalers van 24 uur, filterbaar per land |
+| `/{locale}/p/{retailer}-{LAND}-{id}` | Productpagina: prijs, **vergelijkingstabel van alle winkels met dezelfde EAN** (prijs, verzending, totaal, levertijd, conditie), "wacht N dagen en bespaar X", grafiek (behalve Amazon), alert-formulier |
+| `/{locale}/deals?country=DE&delivery=1&condition=new&maxPrice=500&minDrop=10&sort=total` | Grootste dalers van 24 uur met filters: land, winkel, levertijd (vandaag/morgen/3 dagen/week), conditie, max. prijs incl. verzending, min. daling; sorteren op daling, prijs, totaalprijs of snelste levering |
+| `/{locale}/stores?country=NL` | Winkelregister per land |
 | `/go/{key}?src=…` | Affiliate-redirect met klikregistratie |
-| `/api/watch` | Watch aanmaken (JSON: `product`, `email`, `locale`, `targetPrice`) |
+| `/api/watch` | Watch aanmaken (JSON: `product`, `email`, `locale`, `targetPrice`, `maxDeliveryDays`, `anyRetailer`, `conditionFilter`). Zoekt direct dezelfde EAN bij bol en in de feeds en slaat die aanbieders op voor de vergelijking |
 | `/api/cron/check?retailer=bol\|amazon\|feed\|generic` | Prijscheck + mails |
 | `/api/cron/feeds[?source=ID]` | Feeds inladen |
 | `/api/drops?country=NL` | JSON-feed van dalers voor social-automatisering |
@@ -53,8 +64,10 @@ Migraties in `supabase/migrations/`:
   `watches.locale`, functie `products_due`, view `top_drops_24h`). De lege tabellen uit 0001 zijn
   hernoemd naar `legacy_*`; die mag je verwijderen.
 - `0003_feeds.sql` — `feed_sources` + `feed_offers`, retailer `feed`.
+- `0004_offers_filters.sql` — levertijd, verzendkosten, conditie, voorraad, deeplink, eBay, watch-filters
+  (`max_delivery_days`, `any_retailer`, `condition_filter`), functie `watches_for_product`, view met `total_price`.
 
-**Alle drie staan al op Supabase-project `vraagtest`** (https://bicofsmdeariabifvqgp.supabase.co).
+**Alle vier staan al op Supabase-project `vraagtest`** (https://bicofsmdeariabifvqgp.supabase.co).
 Voor een ander project: de drie bestanden in volgorde uitvoeren in de SQL Editor.
 
 ### Een feed toevoegen
@@ -79,10 +92,26 @@ via de kolom `columns` (jsonb).
    binnen 180 dagen** en de toegang vervalt bij 30 dagen zonder verkoop. Zet daarom eerst je
    `tag`-links op de site (werkt zonder API) en laat Amazon-tracking live gaan zodra de keys er zijn.
    Tot die tijd geeft `/api/watch` voor Amazon-links een nette foutmelding.
-6. **Affiliate-netwerken** voor de rest: Awin (MediaMarkt, Currys, Otto, Zalando, Fnac, HP, …),
+6. **eBay**: gratis app-keys op developer.ebay.com (`EBAY_CLIENT_ID`/`SECRET`), eBay Partner Network
+   aanmelden voor een `EBAY_CAMPAIGN_ID`. Werkt op alle 18 eBay-sites met één set keys.
+7. **Skimlinks of Sovrn Commerce** aanmelden en de redirect-URL in `GENERIC_AFFILIATE_REDIRECT` zetten: vangnet
+   voor elke winkel zonder eigen koppeling.
+8. **Affiliate-netwerken** voor de rest: Awin (MediaMarkt, Currys, Otto, Zalando, Fnac, HP, …),
    Tradedoubler, Daisycon (NL), Partnerize, CJ. Per goedgekeurde adverteerder een feed-URL in
    `feed_sources` zetten. Voor winkels zonder feed: `AFFILIATE_LINK_TEMPLATES` koppelt een
    deeplink-template aan een domein voor de `generic`-provider.
+
+## Filters en "morgen in huis versus volgende week"
+
+Elke bron levert nu per aanbod: prijs, verzendkosten, levertijd in dagen (min/max), conditie en voorraad.
+Daarmee:
+- **Dealspagina**: filter op levertijd (vandaag, morgen, ≤3 dagen, ≤week), land, winkel, conditie, max. totaalprijs,
+  min. daling; sorteer op daling, prijs, totaalprijs incl. verzending of snelste levering.
+- **Productpagina**: alle winkels met dezelfde EAN naast elkaar. Als "morgen in huis" duurder is dan het
+  goedkoopste aanbod met langere levertijd, staat er: "Wacht N dagen en bespaar €X".
+- **Alerts**: de gebruiker kiest "alleen melden als levering binnen 1/3/7 dagen", "alleen nieuw" en
+  "ook bij andere winkels". Een watch op een EAN gaat dan af zodra **welke winkel dan ook** onder de
+  doelprijs zakt, mits het aanbod aan de levertijd- en conditiefilters voldoet (SQL-functie `watches_for_product`).
 
 ## Groei-plan naar "de grootste"
 

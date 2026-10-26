@@ -4,6 +4,7 @@ import { createGunzip } from "node:zlib";
 import { parse } from "csv-parse";
 import { db } from "@/lib/supabase";
 import { normalizeUrl, urlHash } from "@/lib/providers/feed";
+import { normalizeCondition, parseDeliveryText } from "@/lib/delivery";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,11 +16,13 @@ type Source = {
 
 /** Standaard kolomnamen per netwerk; overschrijfbaar via feed_sources.columns. */
 const DEFAULT_COLUMNS: Record<string, Record<string, string>> = {
-  awin: { id: "aw_product_id", mpid: "merchant_product_id", ean: "ean", title: "product_name", url: "merchant_deep_link", deeplink: "aw_deep_link", price: "search_price", currency: "currency", image: "merchant_image_url" },
-  tradedoubler: { id: "TDProductId", mpid: "sku", ean: "ean", title: "name", url: "productUrl", deeplink: "productUrl", price: "price", currency: "currency", image: "imageUrl" },
-  daisycon: { id: "id", mpid: "sku", ean: "ean", title: "title", url: "link", deeplink: "link", price: "price", currency: "currency", image: "image_default" },
-  partnerize: { id: "product_id", mpid: "product_id", ean: "gtin", title: "product_name", url: "product_url", deeplink: "tracking_url", price: "price", currency: "currency", image: "image_url" },
-  cj: { id: "ID", mpid: "SKU", ean: "GTIN", title: "TITLE", url: "LINK", deeplink: "LINK", price: "PRICE", currency: "CURRENCY", image: "IMAGE_LINK" },
+  awin: { id: "aw_product_id", mpid: "merchant_product_id", ean: "ean", title: "product_name", url: "merchant_deep_link", deeplink: "aw_deep_link", price: "search_price", currency: "currency", image: "merchant_image_url", shipping: "delivery_cost", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "merchant_name" },
+  tradedoubler: { id: "TDProductId", mpid: "sku", ean: "ean", title: "name", url: "productUrl", deeplink: "productUrl", price: "price", currency: "currency", image: "imageUrl", shipping: "shippingCost", delivery: "deliveryTime", condition: "condition", stock: "inStock", merchant: "programName" },
+  daisycon: { id: "id", mpid: "sku", ean: "ean", title: "title", url: "link", deeplink: "link", price: "price", currency: "currency", image: "image_default", shipping: "price_shipping", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "program_name" },
+  tradetracker: { id: "productID", mpid: "sku", ean: "EAN", title: "name", url: "productURL", deeplink: "productURL", price: "price", currency: "currency", image: "imageURL", shipping: "deliveryCosts", delivery: "deliveryTime", condition: "condition", stock: "stock", merchant: "campaignName" },
+  partnerize: { id: "product_id", mpid: "product_id", ean: "gtin", title: "product_name", url: "product_url", deeplink: "tracking_url", price: "price", currency: "currency", image: "image_url", shipping: "shipping_cost", delivery: "delivery_time", condition: "condition", stock: "availability", merchant: "merchant_name" },
+  cj: { id: "ID", mpid: "SKU", ean: "GTIN", title: "TITLE", url: "LINK", deeplink: "LINK", price: "PRICE", currency: "CURRENCY", image: "IMAGE_LINK", shipping: "SHIPPING_PRICE", delivery: "SHIPPING_LABEL", condition: "CONDITION", stock: "AVAILABILITY", merchant: "PROGRAM_NAME" },
+  impact: { id: "Product ID", mpid: "Product ID", ean: "GTIN", title: "Product Name", url: "Product URL", deeplink: "Product URL", price: "Current Price", currency: "Currency", image: "Image URL", shipping: "Shipping Rate", delivery: "Shipping Label", condition: "Condition", stock: "Stock Availability", merchant: "Campaign Name" },
 };
 
 const toNumber = (v: unknown) => {
@@ -60,12 +63,20 @@ async function ingest(src: Source) {
     if (!rawUrl || price === null || !mpid || !rec[cols.title]) { skipped++; continue; }
     let url: string;
     try { url = normalizeUrl(rawUrl); } catch { skipped++; continue; }
+    const deliveryText = rec[cols.delivery] || null;
+    const d = parseDeliveryText(deliveryText);
+    const stockRaw = (rec[cols.stock] ?? "").toLowerCase();
+    const inStock = !stockRaw || /^(1|true|yes|ja|y|in ?stock|op voorraad|auf lager|available|instock)$/.test(stockRaw) || /in.?stock|voorraad|lager|available/.test(stockRaw) && !/out|niet|nicht|not/.test(stockRaw);
+    const ean13 = (rec[cols.ean] ?? "").replace(/\D/g, "").padStart(13, "0");
     batch.push({
       source_id: src.id, merchant_product_id: String(mpid).slice(0, 120), url_hash: urlHash(url),
-      ean: /^\d{8,14}$/.test(rec[cols.ean] ?? "") ? rec[cols.ean] : null,
+      ean: /^\d{13}$/.test(ean13) && ean13 !== "0000000000000" ? ean13 : null,
       title: rec[cols.title].slice(0, 300), url: `https://${url}`, deeplink: rec[cols.deeplink] || `https://${url}`,
       price, currency: (rec[cols.currency] || src.currency).toUpperCase().slice(0, 3),
-      image_url: rec[cols.image] || null, updated_at: new Date().toISOString(),
+      image_url: rec[cols.image] || null, shipping_cost: toNumber(rec[cols.shipping]),
+      delivery_text: deliveryText, delivery_min_days: d.min, delivery_max_days: d.max,
+      condition: normalizeCondition(rec[cols.condition]) ?? "new", in_stock: inStock,
+      merchant: rec[cols.merchant] || src.merchant, updated_at: new Date().toISOString(),
     });
     if (batch.length >= 500) await flush();
   }

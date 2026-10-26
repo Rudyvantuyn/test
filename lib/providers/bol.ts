@@ -1,12 +1,15 @@
 /**
- * bol.com Marketing Catalog API (affiliate API). NL + BE.
- * Docs: https://api.bol.com/marketing/docs/catalog-api/  — 1200 requests/uur.
+ * bol.com Marketing Catalog API (affiliate API). NL + BE. 1200 requests/uur.
+ * Docs: https://api.bol.com/marketing/docs/catalog-api/
  */
-import { type PriceProvider, type ProductRef, type ResolvedProduct, ProviderError } from "./types";
+import { daysUntil, normalizeCondition } from "../delivery";
+import { type OfferSnapshot, type PriceProvider, type ResolvedProduct, ProviderError } from "./types";
 
 const TOKEN_URL = "https://login.bol.com/token?grant_type=client_credentials";
 const BASE = "https://api.bol.com/marketing/catalog/v1";
 let cachedToken: { value: string; expiresAt: number } | null = null;
+
+export const bolConfigured = () => !!(process.env.BOL_CLIENT_ID && process.env.BOL_CLIENT_SECRET);
 
 async function getToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) return cachedToken.value;
@@ -40,8 +43,40 @@ async function bolGet<T>(path: string, country: string, params: Record<string, s
 type BolProduct = {
   ean: string; bolProductId: string; title: string; url: string;
   image?: { renditions?: { width: number; url: string }[] };
-  offer?: { price: number };
+  offer?: { price: number; deliveryDescription?: string };
 };
+type BolOffer = {
+  price: number; condition?: string; url?: string; deliveryDescription?: string;
+  minDeliveryDate?: string; maxDeliveryDate?: string; seller?: { name: string };
+};
+
+function snapshot(o: BolOffer): OfferSnapshot {
+  return {
+    price: o.price,
+    shippingCost: null, // bol: gratis verzending boven drempel; niet in API
+    deliveryMinDays: daysUntil(o.minDeliveryDate),
+    deliveryMaxDays: daysUntil(o.maxDeliveryDate) ?? daysUntil(o.minDeliveryDate),
+    deliveryText: o.deliveryDescription ?? null,
+    condition: normalizeCondition(o.condition) ?? "new",
+    inStock: true,
+    merchant: o.seller?.name ?? "bol",
+  };
+}
+
+async function fullProduct(ean: string, country: string): Promise<ResolvedProduct> {
+  const p = await bolGet<BolProduct>(`/products/${ean}`, country, { "include-image": "true", "include-offer": "true" });
+  let snap: OfferSnapshot | null = null;
+  try { snap = snapshot(await bolGet<BolOffer>(`/products/${ean}/offers/best`, country, { "include-seller": "true" })); }
+  catch (e) { if (!(e instanceof ProviderError && e.status === 404)) throw e; }
+  const r = [...(p.image?.renditions ?? [])].sort((a, b) => a.width - b.width);
+  return {
+    retailer: "bol", country, externalId: p.ean, ean: p.ean, title: p.title, url: p.url,
+    imageUrl: (r.find((x) => x.width >= 300) ?? r[r.length - 1])?.url ?? null,
+    currency: "EUR",
+    ...(snap ?? { price: p.offer?.price ?? Number.NaN, inStock: !!p.offer }),
+    price: snap?.price ?? p.offer?.price ?? Number.NaN,
+  };
+}
 
 export const bolProvider: PriceProvider = {
   id: "bol",
@@ -51,7 +86,7 @@ export const bolProvider: PriceProvider = {
 
   async resolve(input, url) {
     const country = url?.pathname.startsWith("/be/") ? "BE" : "NL";
-    let ean: string | null = null;
+    let ean: string;
     if (/^\d{13}$/.test(input)) ean = input;
     else {
       const id = url
@@ -60,26 +95,31 @@ export const bolProvider: PriceProvider = {
       if (!id) throw new ProviderError(400, "Geen bol product-id gevonden in deze link");
       ean = (await bolGet<{ ean: string }>(`/products/${id}/to-ean`, country)).ean;
     }
-    const p = await bolGet<BolProduct>(`/products/${ean}`, country, { "include-image": "true", "include-offer": "true" });
-    const r = [...(p.image?.renditions ?? [])].sort((a, b) => a.width - b.width);
-    return {
-      retailer: "bol", country, externalId: p.ean, ean: p.ean, title: p.title, url: p.url,
-      imageUrl: (r.find((x) => x.width >= 300) ?? r[r.length - 1])?.url ?? null,
-      currency: "EUR", price: p.offer?.price ?? null,
-    };
+    const p = await fullProduct(ean, country);
+    if (Number.isNaN(p.price)) throw new ProviderError(404, "Product is momenteel niet leverbaar bij bol");
+    return p;
   },
 
-  async fetchPrices(items) {
-    const out = new Map<string, number | null>();
+  async fetchOffers(items) {
+    const out = new Map<string, OfferSnapshot | null>();
     for (const it of items) {
       try {
-        const o = await bolGet<{ price: number }>(`/products/${it.externalId}/offers/best`, it.country);
-        out.set(it.externalId, o.price);
+        out.set(it.externalId, snapshot(await bolGet<BolOffer>(`/products/${it.externalId}/offers/best`, it.country, { "include-seller": "true" })));
       } catch (e) {
         if (e instanceof ProviderError && e.status === 404) out.set(it.externalId, null);
         else if (e instanceof ProviderError && e.status === 429) break;
         else console.error("bol fetch", it.externalId, e);
       }
+    }
+    return out;
+  },
+
+  async findByEan(ean, countries) {
+    if (!bolConfigured()) return [];
+    const out: ResolvedProduct[] = [];
+    for (const c of countries.filter((x) => x === "NL" || x === "BE")) {
+      try { const p = await fullProduct(ean, c); if (!Number.isNaN(p.price)) out.push(p); }
+      catch (e) { if (!(e instanceof ProviderError && e.status === 404)) console.error("bol findByEan", e); }
     }
     return out;
   },

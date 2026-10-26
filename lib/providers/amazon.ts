@@ -5,7 +5,8 @@
  * Let op: de PA-API-licentie verbiedt het tonen van historische prijzen; daarom showHistory=false.
  */
 import { createHash, createHmac } from "node:crypto";
-import { type PriceProvider, type ProductRef, type ResolvedProduct, ProviderError } from "./types";
+import { normalizeCondition } from "../delivery";
+import { type OfferSnapshot, type PriceProvider, type ProductRef, ProviderError } from "./types";
 
 type Market = { host: string; region: string; currency: string };
 export const AMAZON_MARKETS: Record<string, Market> = {
@@ -91,16 +92,44 @@ async function paapi<T>(country: string, operation: "GetItems", payload: Record<
   return json;
 }
 
+type Listing = {
+  Price?: { Amount: number; Currency: string };
+  Condition?: { Value?: string };
+  Availability?: { Type?: string; Message?: string };
+  DeliveryInfo?: { IsPrimeEligible?: boolean; IsAmazonFulfilled?: boolean; IsFreeShippingEligible?: boolean };
+  MerchantInfo?: { Name?: string };
+};
 type Item = {
   ASIN: string;
   DetailPageURL: string;
-  ItemInfo?: { Title?: { DisplayValue?: string } };
+  ItemInfo?: { Title?: { DisplayValue?: string }; ExternalIds?: { EANs?: { DisplayValues?: string[] } } };
   Images?: { Primary?: { Medium?: { URL: string }; Large?: { URL: string } } };
-  Offers?: { Listings?: { Price?: { Amount: number; Currency: string } }[] };
+  Offers?: { Listings?: Listing[] };
 };
+
+/** Amazon geeft geen bezorgdatum via PA-API; Prime = doorgaans volgende dag, anders 2–5 dagen. */
+function snapshot(l: Listing | undefined): OfferSnapshot | null {
+  if (!l?.Price) return null;
+  const prime = !!l.DeliveryInfo?.IsPrimeEligible;
+  const available = !l.Availability?.Type || l.Availability.Type === "Now";
+  return {
+    price: l.Price.Amount,
+    shippingCost: l.DeliveryInfo?.IsFreeShippingEligible || prime ? 0 : null,
+    deliveryMinDays: prime ? 1 : 2,
+    deliveryMaxDays: prime ? 1 : 5,
+    deliveryText: prime ? "Prime" : l.Availability?.Message ?? null,
+    condition: normalizeCondition(l.Condition?.Value) ?? "new",
+    inStock: available,
+    merchant: l.MerchantInfo?.Name ?? "Amazon",
+  };
+}
 type GetItemsResponse = { ItemsResult?: { Items?: Item[] }; Errors?: { Code: string; Message: string }[] };
 
-const RESOURCES = ["ItemInfo.Title", "Images.Primary.Medium", "Offers.Listings.Price", "Offers.Listings.Availability.Type"];
+const RESOURCES = [
+  "ItemInfo.Title", "ItemInfo.ExternalIds", "Images.Primary.Medium", "Offers.Listings.Price", "Offers.Listings.Condition",
+  "Offers.Listings.Availability.Type", "Offers.Listings.Availability.Message", "Offers.Listings.DeliveryInfo.IsPrimeEligible",
+  "Offers.Listings.DeliveryInfo.IsFreeShippingEligible", "Offers.Listings.DeliveryInfo.IsAmazonFulfilled", "Offers.Listings.MerchantInfo",
+];
 
 async function getItems(country: string, asins: string[]): Promise<Item[]> {
   const r = await paapi<GetItemsResponse>(country, "GetItems", { ItemIds: asins, Resources: RESOURCES });
@@ -135,19 +164,22 @@ export const amazonProvider: PriceProvider = {
     if (!country || !asin) throw new ProviderError(400, "Geen ASIN gevonden in deze Amazon-link");
     const [item] = await getItems(country, [asin]);
     if (!item) throw new ProviderError(404, "Product niet gevonden bij Amazon");
-    const listing = item.Offers?.Listings?.[0]?.Price;
+    const listing = item.Offers?.Listings?.[0];
+    const snap = snapshot(listing);
+    if (!snap) throw new ProviderError(404, "Geen aanbod met prijs gevonden bij Amazon");
+    const ean = item.ItemInfo?.ExternalIds?.EANs?.DisplayValues?.find((x) => /^\d{13}$/.test(x)) ?? null;
     return {
-      retailer: "amazon", country, externalId: asin, ean: null,
+      retailer: "amazon", country, externalId: asin, ean,
       title: item.ItemInfo?.Title?.DisplayValue ?? `Amazon ${asin}`,
       url: `https://${AMAZON_MARKETS[country].host}/dp/${asin}`,
       imageUrl: item.Images?.Primary?.Medium?.URL ?? null,
-      currency: listing?.Currency ?? AMAZON_MARKETS[country].currency,
-      price: listing?.Amount ?? null,
+      currency: listing?.Price?.Currency ?? AMAZON_MARKETS[country].currency,
+      ...snap,
     };
   },
 
-  async fetchPrices(items) {
-    const out = new Map<string, number | null>();
+  async fetchOffers(items) {
+    const out = new Map<string, OfferSnapshot | null>();
     const byCountry = new Map<string, ProductRef[]>();
     for (const it of items) byCountry.set(it.country, [...(byCountry.get(it.country) ?? []), it]);
     for (const [country, refs] of byCountry) {
@@ -157,7 +189,7 @@ export const amazonProvider: PriceProvider = {
           const found = await getItems(country, chunk.map((r) => r.externalId));
           for (const r of chunk) {
             const item = found.find((x) => x.ASIN === r.externalId);
-            if (item) out.set(r.externalId, item.Offers?.Listings?.[0]?.Price?.Amount ?? null);
+            if (item) out.set(r.externalId, snapshot(item.Offers?.Listings?.[0]));
           }
         } catch (e) {
           if (e instanceof ProviderError && e.status === 429) return out;

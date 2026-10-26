@@ -27,6 +27,14 @@ export type ProductRow = {
   highest_price: number | null;
   last_checked_at: string | null;
   created_at: string;
+  merchant: string | null;
+  shipping_cost: number | null;
+  delivery_min_days: number | null;
+  delivery_max_days: number | null;
+  delivery_text: string | null;
+  condition: "new" | "used" | "refurbished" | null;
+  in_stock: boolean;
+  deeplink: string | null;
 };
 
 export type WatchRow = {
@@ -41,6 +49,10 @@ export type WatchRow = {
   last_notified_price: number | null;
   last_notified_at: string | null;
   created_at: string;
+  ean: string | null;
+  any_retailer: boolean;
+  max_delivery_days: number | null;
+  condition_filter: "new" | "used" | "refurbished" | null;
 };
 
 export type PriceRow = { price: number; checked_at: string };
@@ -54,7 +66,15 @@ export type DropRow = {
   url: string;
   image_url: string | null;
   currency: string;
+  ean: string | null;
+  merchant: string | null;
+  shipping_cost: number | null;
+  delivery_min_days: number | null;
+  delivery_max_days: number | null;
+  condition: "new" | "used" | "refurbished" | null;
+  in_stock: boolean;
   old_price: number;
   new_price: number;
+  total_price: number;
   drop_pct: number;
 };
