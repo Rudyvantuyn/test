@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/supabase";
-import { BolApiError, getProduct, mainImageUrl, resolveEan } from "@/lib/bol";
+import { ProviderError, key as productKey, resolveInput } from "@/lib/providers";
+import { isLocale } from "@/lib/i18n";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const Body = z.object({
-  email: z.string().email("Ongeldig e-mailadres"),
-  product: z.string().min(5, "Voer een bol.com link of EAN in"),
-  targetPrice: z.coerce.number().positive().optional().or(z.literal("").transform(() => undefined)),
+  email: z.string().email(),
+  product: z.string().min(5),
+  locale: z.string().optional(),
+  targetPrice: z.union([z.coerce.number().positive(), z.literal("")]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -16,64 +19,52 @@ export async function POST(req: Request) {
     ? await req.json()
     : Object.fromEntries((await req.formData()).entries());
   const parsed = Body.safeParse(raw);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Ongeldige invoer" }, { status: 400 });
-  }
-  const { email, product, targetPrice } = parsed.data;
+  if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  const { email, product, locale } = parsed.data;
+  const targetPrice = typeof parsed.data.targetPrice === "number" ? parsed.data.targetPrice : null;
 
   try {
-    const ean = await resolveEan(product);
-    const p = await getProduct(ean);
-    const price = p.offer?.price ?? null;
+    const r = await resolveInput(product);
     const supa = db();
-
-    // upsert product + eerste prijspunt
-    const { error: pe } = await supa.from("products").upsert(
-      {
-        ean,
-        bol_product_id: p.bolProductId,
-        title: p.title,
-        url: p.url,
-        image_url: mainImageUrl(p),
-        ...(price !== null
-          ? { last_price: price, last_checked_at: new Date().toISOString() }
-          : {}),
-      },
-      { onConflict: "ean" },
-    );
+    const { data: prod, error: pe } = await supa
+      .from("products")
+      .upsert(
+        {
+          retailer: r.retailer, country: r.country, external_id: r.externalId, ean: r.ean ?? null,
+          title: r.title, url: r.url, image_url: r.imageUrl ?? null, currency: r.currency,
+          ...(r.price !== null ? { last_price: r.price, last_checked_at: new Date().toISOString() } : {}),
+        },
+        { onConflict: "retailer,country,external_id" },
+      )
+      .select("id,lowest_price,highest_price")
+      .single();
     if (pe) throw pe;
-    if (price !== null) {
-      await supa.from("price_history").insert({ ean, price });
-      await supa
-        .from("products")
-        .update({
-          lowest_price: price, // wordt door cron bijgewerkt met min()
-        })
-        .eq("ean", ean)
-        .is("lowest_price", null);
-      await supa.from("products").update({ highest_price: price }).eq("ean", ean).is("highest_price", null);
+
+    if (r.price !== null) {
+      await supa.from("price_history").insert({ product_id: prod.id, price: r.price });
+      await supa.from("products").update({
+        lowest_price: prod.lowest_price === null ? r.price : Math.min(Number(prod.lowest_price), r.price),
+        highest_price: prod.highest_price === null ? r.price : Math.max(Number(prod.highest_price), r.price),
+      }).eq("id", prod.id);
     }
 
     const { data: watch, error: we } = await supa
       .from("watches")
       .upsert(
         {
-          email: email.toLowerCase(),
-          ean,
-          target_price: targetPrice ?? null,
-          mode: targetPrice ? "below" : "any_drop",
-          active: true,
+          email: email.toLowerCase(), product_id: prod.id, locale: locale && isLocale(locale) ? locale : "en",
+          target_price: targetPrice, mode: targetPrice ? "below" : "any_drop", active: true,
         },
-        { onConflict: "email,ean" },
+        { onConflict: "email,product_id" },
       )
       .select("id")
       .single();
     if (we) throw we;
 
-    return NextResponse.json({ ok: true, ean, title: p.title, price, watchId: watch.id });
+    return NextResponse.json({ ok: true, key: productKey(r), title: r.title, price: r.price, currency: r.currency, watchId: watch.id });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Onbekende fout";
-    const status = e instanceof BolApiError ? (e.status === 404 ? 404 : 502) : 400;
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    const status = e instanceof ProviderError ? (e.status >= 400 && e.status < 500 ? e.status : 502) : 400;
     return NextResponse.json({ error: msg }, { status });
   }
 }

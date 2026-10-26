@@ -1,37 +1,33 @@
 "use client";
 import { useState } from "react";
 
-export default function WatchForm({ product = "" }: { product?: string }) {
+type Labels = { product: string; email: string; target: string; submit: string; busy: string; free: string; success: string };
+
+export default function WatchForm({ locale, labels, product = "", currency = "EUR" }: { locale: string; labels: Labels; product?: string; currency?: string }) {
   const [state, setState] = useState<{ busy: boolean; ok?: string; err?: string }>({ busy: false });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const body = Object.fromEntries(new FormData(form).entries());
+    const body = { ...Object.fromEntries(new FormData(form).entries()), locale };
     setState({ busy: true });
-    const res = await fetch("/api/watch", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch("/api/watch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const json = await res.json();
-    if (!res.ok) return setState({ busy: false, err: json.error ?? "Er ging iets mis" });
-    setState({
-      busy: false,
-      ok: `Je volgt nu "${json.title}"${json.price ? ` (huidige prijs €${Number(json.price).toFixed(2)})` : ""}. We mailen je bij een prijsdaling.`,
-    });
-    form.reset();
+    if (!res.ok) return setState({ busy: false, err: json.error ?? "Error" });
+    const price = json.price != null ? new Intl.NumberFormat(undefined, { style: "currency", currency: json.currency ?? "EUR" }).format(json.price) : "";
+    setState({ busy: false, ok: labels.success.replace("{title}", json.title).replace("{price}", price ? ` (${price})` : "") });
+    if (!product) form.reset();
   }
 
   return (
     <form className="watch" onSubmit={onSubmit}>
-      <input name="product" required placeholder="Plak een bol.com productlink of EAN" defaultValue={product} readOnly={!!product} />
-      <input name="email" type="email" required placeholder="Jouw e-mailadres" />
-      <input name="targetPrice" type="number" step="0.01" min="0" placeholder="Optioneel: mail me onder € …" />
-      <button disabled={state.busy}>{state.busy ? "Bezig…" : "Volg deze prijs"}</button>
+      <input name="product" required placeholder={labels.product} defaultValue={product} readOnly={!!product} />
+      <input name="email" type="email" required placeholder={labels.email} />
+      <input name="targetPrice" type="number" step="0.01" min="0" placeholder={`${labels.target} ${currency}`} />
+      <button disabled={state.busy}>{state.busy ? labels.busy : labels.submit}</button>
       {state.ok && <div className="msg ok">{state.ok}</div>}
       {state.err && <div className="msg err">{state.err}</div>}
-      <small>Gratis. Geen account nodig. Afmelden kan met één klik in elke mail.</small>
+      <small>{labels.free}</small>
     </form>
   );
 }

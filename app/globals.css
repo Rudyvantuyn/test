@@ -1,4 +1,4 @@
-:root { --bg:#fff; --fg:#111; --muted:#666; --line:#e6e6e6; --brand:#0000a4; --green:#0a7d32; }
+:root { --bg:#fff; --fg:#111; --muted:#666; --line:#e6e6e6; --brand:#1a1a9c; --green:#0a7d32; }
 @media (prefers-color-scheme: dark) { :root { --bg:#0f0f12; --fg:#f2f2f2; --muted:#a0a0a8; --line:#2a2a30; --brand:#8a8aff; --green:#4fd27a; } }
 * { box-sizing:border-box }
 body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.5 }
@@ -7,6 +7,7 @@ main { max-width:760px; margin:0 auto; padding:32px 16px 64px }
 header { border-bottom:1px solid var(--line) }
 header nav { max-width:760px; margin:0 auto; padding:14px 16px; display:flex; gap:20px; align-items:center }
 header nav a { text-decoration:none; color:var(--fg); font-weight:600 }
+header nav .lang { margin-left:auto; display:flex; gap:10px } header nav .lang a { font-weight:400; color:var(--muted); text-transform:uppercase; font-size:.85rem }
 h1 { font-size:2rem; line-height:1.2; margin:0 0 8px }
 .lead { color:var(--muted); font-size:1.1rem; margin:0 0 24px }
 form.watch { display:grid; gap:10px; margin:20px 0; padding:20px; border:1px solid var(--line); border-radius:12px }
@@ -19,7 +20,9 @@ form.watch button[disabled] { opacity:.6 }
 .card img { width:72px; height:72px; object-fit:contain; border-radius:8px; background:#fff }
 .price { font-weight:700; color:var(--green) } .old { text-decoration:line-through; color:var(--muted); margin-left:6px }
 .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--green); color:#fff; font-size:.85rem; font-weight:600 }
+.tag { display:inline-block; padding:1px 7px; border-radius:6px; border:1px solid var(--line); color:var(--muted); font-size:.8rem; margin-right:6px }
 .btn { display:inline-block; padding:10px 16px; border-radius:8px; background:var(--brand); color:#fff; text-decoration:none; font-weight:600 }
 small, .muted { color:var(--muted) }
-table { width:100%; border-collapse:collapse } td,th { padding:8px; border-bottom:1px solid var(--line); text-align:left }
 .chart { width:100%; height:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0 }
+.filters { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 16px } .filters a { padding:4px 10px; border:1px solid var(--line); border-radius:999px; text-decoration:none; font-size:.9rem }
+.filters a.on { background:var(--brand); color:#fff; border-color:var(--brand) }

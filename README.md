@@ -1,85 +1,118 @@
-# Prijsdaler – geautomatiseerde bol.com prijsalerts (affiliate)
+# PriceDrop / Prijsdaler / Preisfall — internationale prijsalerts op autopilot
 
-Een kleine, vrijwel volledig geautomatiseerde geldmachine: bezoekers plakken een bol.com-link,
-krijgen gratis een mail zodra de prijs daalt, en kopen via jouw affiliate-link (6–8% commissie
-op de **hele bestelling** van die bezoeker). Jij hoeft niets handmatig te doen; een cron-job
-controleert prijzen en verstuurt mails.
+Gebruikers plakken een productlink van **Amazon (21 landen), bol.com (NL/BE) of vrijwel elke
+andere webshop**, krijgen gratis een mail zodra de prijs daalt, en kopen via jouw affiliate-link.
+De site is beschikbaar in **NL, EN en DE** (`/nl`, `/en`, `/de`; automatische keuze op basis van
+browsertaal). Alles draait op cron-jobs; er is geen handmatig werk.
 
-## Waarom dit model
+## Architectuur
 
-- **Koopintentie op het hoogste punt.** Iemand die een prijsalert instelt wil het product al.
-  Een "prijs gedaald"-mail converteert veel beter dan een blogpost of social post.
-- **Geen content-tredmolen.** De gebruikers vullen zelf de catalogus (elke watch = een product
-  met prijsgeschiedenis = een SEO-pagina `/p/<ean>` voor "<product> prijsgeschiedenis" /
-  "laagste prijs").
-- **Officiële data, geen scraping.** De bol Marketing Catalog API is gratis voor affiliates,
-  1200 calls/uur (≈ 28.000 prijschecks per dag).
-- **Gratis infra.** Vercel Hobby (cron inbegrepen), Supabase Free, Resend Free (3.000 mails/maand).
+```
+gebruiker ─▶ /api/watch ─▶ resolveInput()
+                              ├─ bol.com      → Marketing Catalog API (officieel, NL/BE)
+                              ├─ Amazon       → Product Advertising API 5.0 (officieel, 21 marketplaces)
+                              ├─ feed         → feed_offers (productfeeds van Awin/Tradedoubler/Daisycon/Partnerize/CJ)
+                              └─ generic      → schema.org/OpenGraph-prijsdata van de productpagina zelf
+Vercel Cron ─▶ /api/cron/check?retailer=… (elke 2 uur per provider) → price_history + e-mails (Resend)
+Vercel Cron ─▶ /api/cron/feeds (2x per dag) → feeds downloaden en upserten in feed_offers
+/go/<key> ─▶ affiliate-redirect per winkel/land + klikregistratie
+```
 
-## Wat er in zit
+| Provider | Landen | Data | Prijsgeschiedenis publiek | Status |
+| --- | --- | --- | --- | --- |
+| `bol` | NL, BE | Officiële affiliate-API, 1200 calls/uur | ja | klaar, wacht op API-keys |
+| `amazon` | US, CA, MX, BR, GB, DE, FR, IT, ES, NL, BE, SE, PL, TR, AE, SA, EG, IN, JP, AU, SG | PA-API 5.0, GetItems 10 ASINs/call, SigV4 | **nee** (licentie verbiedt dit) | klaar, wacht op Associates-keys |
+| `feed` | elk land | Productfeeds met prijs + deeplink | ja | klaar, feeds toevoegen in `feed_sources` |
+| `generic` | elk land | HTML van de productpagina | ja | werkt bij o.a. Coolblue; grote ketens blokkeren bots |
+
+Getest op 26-10-2026 vanaf een datacenter-IP: Coolblue geeft nette schema.org-data (werkt),
+MediaMarkt, Currys en Fnac geven 403/captcha (Cloudflare). Voor die winkels is de feed-route de
+juiste: elk affiliate-netwerk levert dagelijkse CSV-feeds met prijzen en kant-en-klare
+tracking-links. Dat is toegestaan, stabiel en schaalt naar honderden winkels.
+
+## Routes
 
 | Pad | Functie |
 | --- | --- |
-| `/` | Landing + formulier (link/EAN + e-mail + optionele doelprijs) |
-| `/p/[ean]` | Prijsgeschiedenis-pagina met grafiek, "laagste prijs ooit"-badge, affiliate-knop, alert-formulier (SEO) |
-| `/dalers` | Grootste prijsdalingen van de afgelopen 24 uur (SEO + social-fodder) |
-| `/go/[ean]` | Affiliate-redirect met klikregistratie |
-| `/api/watch` | Maakt een watch aan, lost bol-URL/productId op naar EAN via de API |
-| `/api/cron/check` | Vercel Cron (elke 2 uur): prijzen ophalen, geschiedenis loggen, mails sturen |
-| `/api/unsubscribe` | Afmelden met één klik (token) |
-| `/api/drops` | JSON-feed van de dalers, voor social-automatisering (Metricool/n8n/Zapier) |
-| `supabase/migrations/0001_init.sql` | Tabellen `products`, `price_history`, `watches`, `clicks` + view `top_drops_24h` |
+| `/{nl,en,de}` | Landing + formulier |
+| `/{locale}/p/{retailer}-{LAND}-{id}` | Productpagina: prijs, grafiek (behalve Amazon), badge "laagste ooit", alert-formulier |
+| `/{locale}/deals?country=DE` | Grootste dalers van 24 uur, filterbaar per land |
+| `/go/{key}?src=…` | Affiliate-redirect met klikregistratie |
+| `/api/watch` | Watch aanmaken (JSON: `product`, `email`, `locale`, `targetPrice`) |
+| `/api/cron/check?retailer=bol\|amazon\|feed\|generic` | Prijscheck + mails |
+| `/api/cron/feeds[?source=ID]` | Feeds inladen |
+| `/api/drops?country=NL` | JSON-feed van dalers voor social-automatisering |
+| `/api/unsubscribe?t=…` | Afmelden (ook als `List-Unsubscribe`-header) |
+| `/sitemap.xml`, `/robots.txt` | SEO; één taal per product om duplicaten te vermijden |
 
-## Installatie (≈ 30 minuten)
+## Database (Supabase)
 
-1. **bol affiliate-account** aanmaken op https://affiliate.bol.com (gratis, goedkeuring duurt
-   doorgaans enkele dagen; een werkende site helpt, dus deploy eerst). Vraag daarna in het
-   dashboard **API-toegang** aan → je krijgt `Client ID` + `Client Secret`. Noteer ook je **site-id**.
-2. **Supabase**: het schema uit `supabase/migrations/0001_init.sql` is al toegepast op project
-   `vraagtest` (https://bicofsmdeariabifvqgp.supabase.co). Kopieer daar `Project URL` en `service_role` key.
-   Voor een ander project: voer het SQL-bestand uit in de SQL Editor.
-3. **Resend**: maak een account, verifieer je domein, maak een API key.
-4. **Vercel**: importeer deze repo, zet de variabelen uit `.env.example` als Environment Variables
-   (inclusief `CRON_SECRET`, een willekeurige lange string). Vercel roept `/api/cron/check` aan
-   volgens `vercel.json`.
-5. Lokaal draaien: `cp .env.example .env.local`, invullen, `npm install && npm run dev`.
+Migraties in `supabase/migrations/`:
+- `0001_init.sql` — eerste versie (alleen bol). **Staat al op project `vraagtest`.**
+- `0002_multi_retailer.sql` — vervangt het schema door het multi-retailer model (`products` met
+  `retailer`/`country`/`external_id`, `watches.locale`, functie `products_due`, view `top_drops_24h`).
+  Bevat `drop table`-statements en moet daarom door jou bevestigd worden in de SQL Editor.
+- `0003_feeds.sql` — `feed_sources` + `feed_offers`, retailer `feed`.
 
-Controleer in je bol affiliate dashboard (Links → Deeplink generator) of het link-formaat in
-`lib/bol.ts` (`affiliateLink`) overeenkomt met wat bol voor jouw account genereert.
+Voer 0002 en 0003 in die volgorde uit in de Supabase SQL Editor (er staat nog geen data in).
 
-## Verkeer krijgen (het enige niet-automatische stuk, eenmalig op te zetten)
+### Een feed toevoegen
 
-1. **SEO**: elke gevolgde EAN wordt een pagina. Submit een sitemap, zet interne links vanaf `/dalers`.
-   Zoekwoorden als "<product> prijsgeschiedenis", "<product> laagste prijs", "<product> aanbieding".
-2. **Social op autopilot**: `/api/drops` geeft de dalers als JSON. Koppel dit via Metricool/n8n aan
-   een Pinterest-bord en een TikTok/Instagram "deals"-account: dagelijks "Top 5 prijsdalingen bij bol".
-   Pinterest is onderschat voor NL product-deals en heeft lange houdbaarheid.
-3. **Reddit/forums**: r/nederland, Tweakers, Bokt, Bol-deals Facebook-groepen; alleen nuttige tips,
-   geen spam.
-4. **Browserextensie** (later): "Volg deze prijs"-knop op bol-productpagina's; de concurrentie
-   (Prijzenvolger, Pricio) heeft slechte reviews of is offline.
+```sql
+insert into feed_sources (network, merchant, merchant_domain, country, currency, feed_url, gzip)
+values ('awin', 'MediaMarkt DE', 'mediamarkt.de', 'DE', 'EUR',
+        'https://productdata.awin.com/datafeed/download/apikey/XXXX/language/de/fid/12345/columns/aw_deep_link,product_name,aw_product_id,merchant_product_id,merchant_image_url,search_price,currency,merchant_deep_link,ean/format/csv/delimiter/%2C/compression/gzip/', true);
+```
+Kolomnamen per netwerk staan in `app/api/cron/feeds/route.ts` en zijn per feed te overschrijven
+via de kolom `columns` (jsonb).
 
-## Verdienmodel en realistische cijfers
+## Installatie
 
-- Commissie bol: 6–8% afhankelijk van categorie; geldt voor de hele bestelling binnen de cookie.
-- Stel 1.000 actieve watches, gemiddeld 1 daling per product per maand, 40% open-rate,
-  30% click-rate, 10% conversie, €60 orderwaarde, 7% commissie → ≈ 12 orders → **≈ €50/maand**.
-  Bij 20.000 watches ≈ **€1.000/maand**, zonder extra werk. Groei komt vrijwel volledig uit SEO-pagina's
-  en de dagelijkse social-feed.
-- Extra inkomsten later: premium (€1,99/mnd voor onbeperkt watches + push), Amazon.nl/Coolblue erbij,
-  "laagste prijs ooit"-alerts als aparte nieuwsbrief met sponsorregels.
+1. **Supabase**: migraties 0002 en 0003 uitvoeren. `SUPABASE_URL` + `service_role` key noteren.
+2. **Resend**: domein verifiëren, API-key.
+3. **Vercel**: repo importeren, variabelen uit `.env.example` invullen, `CRON_SECRET` zetten.
+   De crons in `vercel.json` worden automatisch aangemaakt.
+4. **bol.com**: affiliate-account op affiliate.bol.com → API-toegang → `BOL_CLIENT_ID`, `BOL_CLIENT_SECRET`, `BOL_SITE_ID`.
+5. **Amazon Associates**: aanmelden per regio (EU is één account voor DE/FR/IT/ES/NL/BE/SE/PL/UK/…;
+   US/CA/MX/BR één; JP, AU, SG apart). PA-API-keys krijg je pas **na 3 gekwalificeerde verkopen
+   binnen 180 dagen** en de toegang vervalt bij 30 dagen zonder verkoop. Zet daarom eerst je
+   `tag`-links op de site (werkt zonder API) en laat Amazon-tracking live gaan zodra de keys er zijn.
+   Tot die tijd geeft `/api/watch` voor Amazon-links een nette foutmelding.
+6. **Affiliate-netwerken** voor de rest: Awin (MediaMarkt, Currys, Otto, Zalando, Fnac, HP, …),
+   Tradedoubler, Daisycon (NL), Partnerize, CJ. Per goedgekeurde adverteerder een feed-URL in
+   `feed_sources` zetten. Voor winkels zonder feed: `AFFILIATE_LINK_TEMPLATES` koppelt een
+   deeplink-template aan een domein voor de `generic`-provider.
 
-## Grijs gebied: wat wel en niet
+## Groei-plan naar "de grootste"
 
-- Toegestaan: affiliate-links in alerts, mits je het meldt (staat in mail en footer).
-- E-mail: de gebruiker vraagt de alert zelf aan (toestemming), elke mail heeft een afmeldlink. Dat is
-  voldoende volgens de Telecommunicatiewet. Stuur geen andere marketing zonder aparte opt-in.
-- Niet doen: bol.com scrapen (blokkeert en is tegen de voorwaarden; de API is gratis), nep-reviews,
-  kunstmatig opgedreven "was"-prijzen (ACM handhaaft hierop).
-- Fiscaal: affiliate-inkomsten zijn belast (resultaat uit overige werkzaamheden of winst uit onderneming).
+1. **Land voor land, op volgorde van affiliate-opbrengst**: DE (grootste e-commerce in de EU,
+   Amazon.de + MediaMarkt/Otto via Awin), UK (Amazon.co.uk + Currys/Argos), US (Amazon.com),
+   daarna FR/IT/ES. NL/BE draait al via bol.
+2. **SEO per land**: elke gevolgde product-URL wordt een pagina in de landstaal. Submit de sitemap
+   bij Google Search Console per locale. Zoekintentie: "<product> price history", "<product>
+   lowest price", "<product> Preisverlauf", "<product> prijsgeschiedenis".
+3. **Social op autopilot per land**: `/api/drops?country=DE` → Metricool/n8n → Pinterest, TikTok,
+   Instagram, X. Pinterest en Telegram-dealkanalen zijn de hoogste converteerders voor deals.
+4. **Browserextensie** ("Track this price"-knop op elke productpagina) zodra er verkeer is.
+5. **Premium** (€1,99/mnd: onbeperkt watches, push, prijsvoorspelling) en sponsorplekken in de
+   dagelijkse deals-mail.
 
-## Volgende stappen in de code
+## Regels per bron (zodat je accounts niet verliest)
 
-- `app/sitemap.ts` genereren uit `products`.
-- Dagelijkse "nieuw laagste prijs ooit"-nieuwsbrief voor alle gebruikers (hogere mailfrequentie = meer kliks).
-- Dubbele opt-in toevoegen als je de mail-reputatie strak wilt houden.
+- **Amazon**: géén prijsgeschiedenis tonen, prijzen max. 24 uur cachen en met tijdstempel tonen,
+  affiliate-links niet in e-mail zetten die als "Amazon-mail" overkomen. De code toont voor Amazon
+  alleen de actuele prijs; de alert-mail linkt naar jouw pagina en via `/go` naar Amazon.
+- **bol.com**: API-data niet misleidend presenteren, credentials server-side houden.
+- **Feeds**: alleen feeds van adverteerders waarvoor je bent goedgekeurd.
+- **E-mail**: gebruiker vraagt de alert zelf aan, elke mail heeft afmeldlink en `List-Unsubscribe`.
+  Voor DE is dubbele opt-in gebruikelijk (nog niet ingebouwd; toe te voegen in `/api/watch`).
+- **Scrapen** (`generic`): lage frequentie, één verzoek per product per 2 uur. Winkels die blokkeren
+  via de feed-route doen, niet via proxies/captcha-omzeiling.
+
+## Lokaal draaien
+
+```
+cp .env.example .env.local   # invullen
+npm install && npm run dev
+```
+`npm run build` en `npm run typecheck` slagen zonder omgevingsvariabelen.

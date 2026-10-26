@@ -1,5 +1,9 @@
 {
   "crons": [
-    { "path": "/api/cron/check", "schedule": "0 */2 * * *" }
+    { "path": "/api/cron/check?retailer=bol", "schedule": "5 */2 * * *" },
+    { "path": "/api/cron/check?retailer=amazon", "schedule": "20 */2 * * *" },
+    { "path": "/api/cron/check?retailer=generic", "schedule": "40 */2 * * *" },
+    { "path": "/api/cron/check?retailer=feed", "schedule": "50 */2 * * *" },
+    { "path": "/api/cron/feeds", "schedule": "15 3,15 * * *" }
   ]
 }
