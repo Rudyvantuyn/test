@@ -48,13 +48,14 @@ tracking-links. Dat is toegestaan, stabiel en schaalt naar honderden winkels.
 ## Database (Supabase)
 
 Migraties in `supabase/migrations/`:
-- `0001_init.sql` — eerste versie (alleen bol). **Staat al op project `vraagtest`.**
-- `0002_multi_retailer.sql` — vervangt het schema door het multi-retailer model (`products` met
-  `retailer`/`country`/`external_id`, `watches.locale`, functie `products_due`, view `top_drops_24h`).
-  Bevat `drop table`-statements en moet daarom door jou bevestigd worden in de SQL Editor.
+- `0001_init.sql` — eerste versie (alleen bol).
+- `0002_multi_retailer.sql` — multi-retailer model (`products` met `retailer`/`country`/`external_id`,
+  `watches.locale`, functie `products_due`, view `top_drops_24h`). De lege tabellen uit 0001 zijn
+  hernoemd naar `legacy_*`; die mag je verwijderen.
 - `0003_feeds.sql` — `feed_sources` + `feed_offers`, retailer `feed`.
 
-Voer 0002 en 0003 in die volgorde uit in de Supabase SQL Editor (er staat nog geen data in).
+**Alle drie staan al op Supabase-project `vraagtest`** (https://bicofsmdeariabifvqgp.supabase.co).
+Voor een ander project: de drie bestanden in volgorde uitvoeren in de SQL Editor.
 
 ### Een feed toevoegen
 
@@ -68,7 +69,7 @@ via de kolom `columns` (jsonb).
 
 ## Installatie
 
-1. **Supabase**: migraties 0002 en 0003 uitvoeren. `SUPABASE_URL` + `service_role` key noteren.
+1. **Supabase**: schema staat klaar op `vraagtest`. `SUPABASE_URL` + `service_role` key noteren.
 2. **Resend**: domein verifiëren, API-key.
 3. **Vercel**: repo importeren, variabelen uit `.env.example` invullen, `CRON_SECRET` zetten.
    De crons in `vercel.json` worden automatisch aangemaakt.
