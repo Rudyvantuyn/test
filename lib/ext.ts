@@ -34,11 +34,6 @@ export const InstallId = z.string().regex(/^[a-f0-9-]{16,64}$/);
 
 export type Identity = { retailer: Retailer; country: string; externalId: string; url: string; feedOffer?: boolean };
 
-const sameSite = (a: string, b: string) => {
-  const strip = (h: string) => h.toLowerCase().replace(/^(www|m)\./, "");
-  return strip(a) === strip(b);
-};
-
 /** Leidt winkel, land en product-id af uit de URL (niet uit wat de extensie beweert). */
 export async function identityFromPage(page: Page): Promise<Identity | null> {
   const u = new URL(page.url);
@@ -57,8 +52,8 @@ export async function identityFromPage(page: Page): Promise<Identity | null> {
     if (!id) return null;
     return { retailer: "ebay", country: eb, externalId: id, url: `https://www.${EBAY_MARKETS[eb].host}/itm/${id}` };
   }
-  const canonicalRaw = page.canonical && sameSite(new URL(page.canonical).hostname, host) ? page.canonical : page.url;
-  const canonical = cleanUrl(new URL(canonicalRaw));
+  // Eigen adres als identiteit (zie generic.ts: canonical van bundels wijst naar het basisproduct)
+  const canonical = cleanUrl(new URL(page.url));
   if (/(^|\.)bol\.com$/.test(host)) {
     const ean = page.ean && /^\d{13}$/.test(page.ean) ? page.ean : null;
     if (ean) return { retailer: "bol", country: u.pathname.startsWith("/be/") ? "BE" : "NL", externalId: ean, url: canonical };

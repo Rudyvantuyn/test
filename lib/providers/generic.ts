@@ -204,7 +204,9 @@ export const genericProvider: PriceProvider = {
         ? `${known.name} levert geen productdata aan onze robot. Deze winkel wordt via het ${known.network}-netwerk gekoppeld; probeer het later opnieuw.`
         : "Kon geen prijs vinden op deze pagina. Deze winkel wordt (nog) niet ondersteund.");
     }
-    const canonical = cleanUrl(p.canonical ? new URL(p.canonical, url) : url);
+    // Identiteit = het eigen (opgeschoonde) adres, NIET de canonical: winkels als Coolblue zetten op
+    // bundelpagina's de canonical naar het basisproduct, waardoor bundels het basisproduct zouden overschrijven.
+    const canonical = cleanUrl(url);
     const host = new URL(canonical).hostname;
     const country = countryFromHost(host);
     return {
