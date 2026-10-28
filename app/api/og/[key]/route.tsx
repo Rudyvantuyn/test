@@ -26,13 +26,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
           {p.image_url ? <img src={p.image_url} width={360} height={360} style={{ objectFit: "contain" }} /> : null}
         </div>
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: 48, flex: 1 }}>
-          <div style={{ fontSize: 28, color: "#9a9aa8" }}>{shop} · {p.country}</div>
+          <div style={{ fontSize: 28, color: "#9a9aa8" }}>{`${shop} · ${p.country}`}</div>
           <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.15, marginTop: 12, maxHeight: 210, overflow: "hidden" }}>{p.title.slice(0, 90)}</div>
           <div style={{ display: "flex", alignItems: "baseline", marginTop: 28 }}>
             <div style={{ fontSize: 88, fontWeight: 800, color: "#4fd27a" }}>{eur(cur, p.currency)}</div>
             {pct > 0 && <div style={{ fontSize: 40, color: "#9a9aa8", textDecoration: "line-through", marginLeft: 24 }}>{eur(old, p.currency)}</div>}
           </div>
-          {pct > 0 && <div style={{ display: "flex", fontSize: 36, fontWeight: 700, background: "#4fd27a", color: "#101014", borderRadius: 999, padding: "8px 28px", marginTop: 16, alignSelf: "flex-start" }}>-{pct}%</div>}
+          {pct > 0 && <div style={{ display: "flex", fontSize: 36, fontWeight: 700, background: "#4fd27a", color: "#101014", borderRadius: 999, padding: "8px 28px", marginTop: 16, alignSelf: "flex-start" }}>{`-${pct}%`}</div>}
           <div style={{ fontSize: 26, color: "#9a9aa8", marginTop: 36 }}>pricedropalert.app</div>
         </div>
       </div>
