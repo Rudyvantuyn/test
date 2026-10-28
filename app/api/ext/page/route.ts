@@ -72,6 +72,7 @@ export async function POST(req: Request) {
     .filter((o) => shop(o).toLowerCase() !== myShop.toLowerCase()) // andere winkels, niet dezelfde winkel
     .map((o) => ({ o, total: Number(o.last_price) + Number(o.shipping_cost ?? 0) }))
     .sort((a, b) => a.total - b.total)
+    .filter((x, i, arr) => arr.findIndex((y) => shop(y.o).toLowerCase() === shop(x.o).toLowerCase()) === i) // per winkel de goedkoopste
     .slice(0, 3)
     .map(({ o, total }) => ({
       shop: shop(o), country: o.country, price: Number(o.last_price), total, currency: o.currency,
