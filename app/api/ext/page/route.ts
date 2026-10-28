@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     .filter((o) => !(o.retailer === id.retailer && o.external_id === id.externalId))
     .filter((o) => shop(o).toLowerCase() !== myShop.toLowerCase()) // andere winkels, niet dezelfde winkel
     .map((o) => ({ o, total: Number(o.last_price) + Number(o.shipping_cost ?? 0) }))
-    .sort((a, b) => a.total - b.total)
+    .sort((a, b) => a.total - b.total || (a.o.delivery_max_days ?? 99) - (b.o.delivery_max_days ?? 99)) // bij gelijke prijs: snelste levering
     .filter((x, i, arr) => arr.findIndex((y) => shop(y.o).toLowerCase() === shop(x.o).toLowerCase()) === i) // per winkel de goedkoopste
     .slice(0, 3)
     .map(({ o, total }) => ({
