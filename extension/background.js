@@ -2,14 +2,14 @@
 const DEFAULT_API = "https://pricedropalert.app";
 
 async function settings() {
-  const s = await chrome.storage.local.get(["installId", "email", "contribute", "showButton", "hiddenHosts", "apiBase"]);
+  const s = await chrome.storage.local.get(["installId", "email", "contribute", "showButton", "hiddenHosts", "apiBase", "lang"]);
   if (!s.installId) {
     s.installId = crypto.randomUUID();
     await chrome.storage.local.set({ installId: s.installId });
   }
   return {
     installId: s.installId, email: s.email ?? "", contribute: s.contribute ?? true, showButton: s.showButton ?? true,
-    hiddenHosts: s.hiddenHosts ?? [], apiBase: s.apiBase || DEFAULT_API,
+    hiddenHosts: s.hiddenHosts ?? [], apiBase: s.apiBase || DEFAULT_API, lang: s.lang || "",
   };
 }
 

@@ -11,6 +11,7 @@
       contributeHelp: "Op productpagina's vraagt de extensie aan PriceDrop wat we van het product weten. Staat dit aan, dan bewaren we de prijs als het product al bij ons bekend is. We bewaren geen browsegeschiedenis en geen persoonsgegevens.",
       showButton: "Knop tonen op productpagina's", saved: "Opgeslagen", openSite: "Naar pricedropalert.app",
       noProduct: "Open een productpagina in een webshop om de prijs te volgen.", privacy: "Privacy",
+      language: "Taal van knop en e-mails", auto: "Automatisch (browser)",
     },
     en: {
       follow: "Track price", followThis: "Track this price", email: "Your email address", target: "Email me below (optional)",
@@ -22,6 +23,7 @@
       contributeHelp: "On product pages the extension asks PriceDrop what we know about the product. With this on, we store the price if we already know the product. We store no browsing history and no personal data.",
       showButton: "Show button on product pages", saved: "Saved", openSite: "Go to pricedropalert.app",
       noProduct: "Open a product page in any web shop to track its price.", privacy: "Privacy",
+      language: "Language of button and emails", auto: "Automatic (browser)",
     },
     de: {
       follow: "Preis verfolgen", followThis: "Diesen Preis verfolgen", email: "Deine E-Mail-Adresse", target: "Mail mir unter (optional)",
@@ -33,9 +35,11 @@
       contributeHelp: "Auf Produktseiten fragt die Erweiterung PriceDrop, was wir über das Produkt wissen. Ist dies an, speichern wir den Preis, wenn wir das Produkt schon kennen. Wir speichern keinen Browserverlauf und keine persönlichen Daten.",
       showButton: "Knopf auf Produktseiten zeigen", saved: "Gespeichert", openSite: "Zu pricedropalert.app",
       noProduct: "Öffne eine Produktseite in einem Shop, um den Preis zu verfolgen.", privacy: "Datenschutz",
+      language: "Sprache von Knopf und E-Mails", auto: "Automatisch (Browser)",
     },
   };
   const lang = (navigator.language || "en").slice(0, 2).toLowerCase();
   globalThis.PD_LANG = T[lang] ? lang : "en";
   globalThis.PD_T = T[globalThis.PD_LANG];
+  globalThis.PD_ALL = T;
 })();

@@ -1,7 +1,7 @@
 /* Toont een kleine PriceDrop-knop op productpagina's. Alle paginatekst via textContent (nooit innerHTML). */
 (() => {
   if (window.top !== window) return; // niet in iframes
-  const T = globalThis.PD_T, LANG = globalThis.PD_LANG;
+  let T = globalThis.PD_T, LANG = globalThis.PD_LANG;
   let host = null, lastUrl = null, current = null;
 
   const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch { r(null); } });
@@ -121,6 +121,7 @@
     if (!page) { unmount(); current = null; return; }
     const s = await send({ type: "settings" });
     if (!s || !s.showButton || (s.hiddenHosts ?? []).includes(location.hostname)) return;
+    if (s.lang && globalThis.PD_ALL?.[s.lang]) { LANG = s.lang; T = globalThis.PD_ALL[s.lang]; }
     current = page;
     render(page, null, false);
     const res = await send({ type: "page", page, locale: LANG });

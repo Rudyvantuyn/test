@@ -6,6 +6,7 @@
     body { width: 300px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; background: #fff }
     h1 { font-size: 16px; margin: 0 0 10px; color: #1a1a9c }
     label { display: block; margin: 10px 0 2px; font-weight: 600 }
+    select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font: inherit; background: inherit; color: inherit }
     input[type=email] { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font: inherit }
     .chk { display: flex; gap: 8px; align-items: flex-start; font-weight: 600 } .chk input { margin-top: 3px }
     .help { color: #666; font-size: 12px; margin: 2px 0 0 24px }
@@ -19,6 +20,8 @@
   <p id="intro"></p>
   <label for="email" id="l-email"></label>
   <input id="email" type="email" autocomplete="email">
+  <label for="lang" id="l-lang"></label>
+  <select id="lang"><option value="" id="o-auto"></option><option value="nl">Nederlands</option><option value="en">English</option><option value="de">Deutsch</option></select>
   <label class="chk"><input id="showButton" type="checkbox"> <span id="l-show"></span></label>
   <label class="chk"><input id="contribute" type="checkbox"> <span id="l-contrib"></span></label>
   <div class="help" id="h-contrib"></div>
