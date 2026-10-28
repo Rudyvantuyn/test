@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import WatchForm from "@/app/components/WatchForm";
+import ProductJsonLd from "@/app/components/ProductJsonLd";
 import { formLabels } from "@/lib/formLabels";
 import { isLocale, money, t, type Locale } from "@/lib/i18n";
 import { parseKey, providers, retailerLabel } from "@/lib/providers";
@@ -76,8 +77,10 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
   const fast = all.filter((x) => x.delivery_max_days !== null && x.delivery_max_days <= 1).sort((a, b) => total(a) - total(b))[0];
   const saveByWaiting = cheapest && fast && cheapest.id !== fast.id && total(fast) > total(cheapest) ? total(fast) - total(cheapest) : 0;
 
+  const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
   return (
     <>
+      <ProductJsonLd p={p} offers={all} url={`${base}/${locale}/p/${key}`} />
       <span className="tag">{shopName(p)} · {p.country}</span>
       {del && <span className="tag">{del}</span>}
       {p.condition && p.condition !== "new" && <span className="tag">{p.condition}</span>}
