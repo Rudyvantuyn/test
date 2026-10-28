@@ -16,6 +16,7 @@ export type Parsed = {
   title: string | null; price: number | null; currency: string | null; image: string | null; canonical: string | null;
   ean: string | null; inStock: boolean | null; condition: string | null; shippingCost: number | null;
   deliveryMin: number | null; deliveryMax: number | null; deliveryText: string | null; brand: string | null;
+  listPrice: number | null; promoUntil: string | null;
 };
 
 function toNumber(v: unknown): number | null {
@@ -47,10 +48,52 @@ function meta(html: string, attr: "property" | "name" | "itemprop", key: string)
 const str = (v: unknown): string | null => (typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null);
 const QV = (v: unknown): number | null => (v && typeof v === "object" ? toNumber((v as Record<string, unknown>).value ?? (v as Record<string, unknown>).maxValue) : toNumber(v));
 
+/** Geeft het JSON-object terug waarin positie `at` staat (tekst tussen de omsluitende accolades). */
+function enclosingObject(s: string, at: number, maxLen = 3000): string | null {
+  let depth = 0, start = -1;
+  for (let i = at; i >= Math.max(0, at - maxLen); i--) {
+    const c = s[i];
+    if (c === "}") depth++;
+    else if (c === "{") { if (depth === 0) { start = i; break; } depth--; }
+  }
+  if (start < 0) return null;
+  depth = 0;
+  for (let i = start; i < Math.min(s.length, start + maxLen); i++) {
+    const c = s[i];
+    if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return null;
+}
+
+/**
+ * Zoekt een "van"-prijs in ingesloten JSON (Next.js/React-data van winkels zoals Coolblue).
+ * Telt alleen als in hetzelfde object ook de huidige verkoopprijs staat, zodat prijzen van
+ * andere producten op de pagina niet worden meegenomen.
+ */
+export function embeddedListPrice(html: string, price: number): number | null {
+  const s = html.replace(/\\"/g, '"');
+  const num = price.toFixed(2).replace(/\.?0+$/, "").replace(".", "\\.");
+  const saleRe = new RegExp(`"(?:salesPrice|salePrice|currentPrice|sellingPrice|finalPrice|offerPrice|price)"\\s*:\\s*(?:\\{[^{}]{0,80}?"(?:includingVat|amount|value|price|gross)"\\s*:\\s*)?"?${num}(?:\\.0+)?(?![\\d.])`);
+  const re = /"(?:listPrice|strikethroughPrice|strikeThroughPrice|wasPrice|oldPrice|originalPrice|previousPrice|regularPrice|rrp|msrp|recommendedRetailPrice)"\s*:\s*(?:\{[^{}]{0,80}?"(?:includingVat|amount|value|price|gross)"\s*:\s*)?"?(\d+(?:[.,]\d{1,2})?)/gi;
+  const counts = new Map<number, number>();
+  for (const m of s.matchAll(re)) {
+    const lp = toNumber(m[1]);
+    if (lp === null || !(lp > price * 1.02 && lp < price * 5)) continue;
+    const obj = enclosingObject(s, m.index ?? 0);
+    if (!obj || !saleRe.test(obj)) continue;
+    counts.set(lp, (counts.get(lp) ?? 0) + 1);
+  }
+  let best: number | null = null, n = 0;
+  for (const [lp, c] of counts) if (c > n) { best = lp; n = c; }
+  return best;
+}
+
 export function parseProductHtml(html: string): Parsed {
   const out: Parsed = {
     title: null, price: null, currency: null, image: null, canonical: null, ean: null, inStock: null,
     condition: null, shippingCost: null, deliveryMin: null, deliveryMax: null, deliveryText: null, brand: null,
+    listPrice: null, promoUntil: null,
   };
   for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     let data: unknown;
@@ -67,7 +110,12 @@ export function parseProductHtml(html: string): Parsed {
       if (!offersRaw || typeof offersRaw !== "object") return;
       let of = offersRaw as Record<string, unknown>;
       if (Array.isArray(of.offers) && of.offers[0]) of = { ...of, ...(of.offers[0] as Record<string, unknown>) };
-      out.price = toNumber(of.price ?? of.lowPrice ?? (of.priceSpecification as { price?: unknown })?.price);
+      const specs = (Array.isArray(of.priceSpecification) ? of.priceSpecification : of.priceSpecification ? [of.priceSpecification] : []) as Record<string, unknown>[];
+      const saleSpec = specs.find((x) => !/ListPrice|Strikethrough|MSRP|SRP/i.test(String(x.priceType ?? "")));
+      const listSpec = specs.find((x) => /ListPrice|Strikethrough|MSRP|SRP/i.test(String(x.priceType ?? "")));
+      out.price = toNumber(of.price ?? of.lowPrice ?? saleSpec?.price);
+      out.listPrice = toNumber(listSpec?.price);
+      out.promoUntil = str(of.priceValidUntil)?.slice(0, 10) ?? null;
       out.currency = str(of.priceCurrency) ?? str((of.priceSpecification as { priceCurrency?: unknown })?.priceCurrency);
       const av = str(of.availability);
       if (av) out.inStock = /InStock|LimitedAvailability|OnlineOnly|PreSale|InStoreOnly/i.test(av);
@@ -94,6 +142,12 @@ export function parseProductHtml(html: string): Parsed {
   const avail = meta(html, "property", "product:availability") ?? meta(html, "property", "og:availability");
   if (out.inStock === null && avail) out.inStock = /instock|in stock|available/i.test(avail);
   out.condition ??= meta(html, "property", "product:condition");
+  if (out.price !== null) {
+    out.listPrice ??= toNumber(meta(html, "property", "product:original_price:amount") ?? meta(html, "property", "og:price:standard_amount"));
+    out.listPrice ??= embeddedListPrice(html, out.price);
+    if (out.listPrice !== null && !(out.listPrice > out.price * 1.02 && out.listPrice < out.price * 5)) out.listPrice = null;
+  }
+  if (out.listPrice === null) out.promoUntil = null;
   // levertijd-tekst uit zichtbare tekst (bv. "Morgen in huis", "Lieferung in 1-2 Werktagen"); niet bij uitverkocht
   if (out.deliveryMax === null && out.inStock !== false) {
     const txt = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
@@ -130,6 +184,7 @@ function toSnapshot(p: Parsed, host: string): OfferSnapshot {
     price: p.price!, shippingCost: p.shippingCost, deliveryMinDays: p.deliveryMin, deliveryMaxDays: p.deliveryMax,
     deliveryText: p.deliveryText, condition: normalizeCondition(p.condition) ?? "new", inStock: p.inStock ?? true,
     merchant: retailerForHost(host)?.name ?? host.replace(/^www\./, ""),
+    listPrice: p.listPrice, promoUntil: p.promoUntil,
   };
 }
 

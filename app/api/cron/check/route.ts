@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { db, type ProductRow, type WatchRow } from "@/lib/supabase";
+import { db, type ProductRow } from "@/lib/supabase";
 import { providers, type Retailer } from "@/lib/providers";
-import { sendPriceDropEmail } from "@/lib/email";
+import { applySnapshot } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const MIN_DROP_PCT = 0.03; // bij "elke daling": alleen mailen vanaf 3%
 
 function authorized(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -31,45 +29,14 @@ export async function GET(req: Request) {
     if (!products.length) continue;
 
     const offers = await provider.fetchOffers(products.map((p) => ({ retailer: rid, country: p.country, externalId: p.external_id, url: p.url })));
-    const now = new Date().toISOString();
 
     for (const p of products) {
       if (!offers.has(p.external_id)) continue; // fout: later opnieuw
-      const o = offers.get(p.external_id)!;
       s.checked++;
       try {
-        if (o === null) { await supa.from("products").update({ last_checked_at: now, in_stock: false }).eq("id", p.id); continue; }
-        const price = o.price;
-        await supa.from("price_history").insert({ product_id: p.id, price });
-        await supa.from("products").update({
-          last_price: price, last_checked_at: now,
-          lowest_price: p.lowest_price === null ? price : Math.min(Number(p.lowest_price), price),
-          highest_price: p.highest_price === null ? price : Math.max(Number(p.highest_price), price),
-          shipping_cost: o.shippingCost ?? null, delivery_min_days: o.deliveryMinDays ?? null, delivery_max_days: o.deliveryMaxDays ?? null,
-          delivery_text: o.deliveryText ?? null, condition: o.condition ?? p.condition, in_stock: o.inStock ?? true,
-          deeplink: o.deeplink ?? p.deeplink, merchant: o.merchant ?? p.merchant,
-        }).eq("id", p.id);
-
-        const old = p.last_price !== null ? Number(p.last_price) : null;
-        if (old === null || price >= old || o.inStock === false) continue;
-        s.drops++;
-
-        // Watches op dit product + watches op dezelfde EAN (any_retailer), met levertijd-/conditiefilter in SQL
-        const { data: watches } = await supa.rpc("watches_for_product", { p_id: p.id });
-        const updated: ProductRow = { ...p, last_price: price, shipping_cost: o.shippingCost ?? null, delivery_min_days: o.deliveryMinDays ?? null,
-          delivery_max_days: o.deliveryMaxDays ?? null, merchant: o.merchant ?? p.merchant, condition: o.condition ?? p.condition };
-        for (const w of (watches ?? []) as WatchRow[]) {
-          const wants = w.mode === "below"
-            ? w.target_price !== null && price + Number(o.shippingCost ?? 0) <= Number(w.target_price)
-            : (old - price) / old >= MIN_DROP_PCT;
-          const alreadyTold = w.last_notified_price !== null && price >= Number(w.last_notified_price);
-          if (!wants || alreadyTold) continue;
-          try {
-            await sendPriceDropEmail(w, updated, `${rid}-${p.country}-${p.external_id}`, old, price);
-            await supa.from("watches").update({ last_notified_price: price, last_notified_at: now }).eq("id", w.id);
-            s.emails++;
-          } catch (err) { s.errors++; console.error("mail", w.id, err); }
-        }
+        const r = await applySnapshot(p, offers.get(p.external_id)!);
+        if (r.drop) s.drops++;
+        s.emails += r.emails; s.errors += r.errors;
       } catch (err) { s.errors++; console.error("check", p.id, err); }
     }
   }

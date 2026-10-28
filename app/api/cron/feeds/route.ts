@@ -16,13 +16,13 @@ type Source = {
 
 /** Standaard kolomnamen per netwerk; overschrijfbaar via feed_sources.columns. */
 const DEFAULT_COLUMNS: Record<string, Record<string, string>> = {
-  awin: { id: "aw_product_id", mpid: "merchant_product_id", ean: "ean", title: "product_name", url: "merchant_deep_link", deeplink: "aw_deep_link", price: "search_price", currency: "currency", image: "merchant_image_url", shipping: "delivery_cost", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "merchant_name" },
-  tradedoubler: { id: "TDProductId", mpid: "sku", ean: "ean", title: "name", url: "productUrl", deeplink: "productUrl", price: "price", currency: "currency", image: "imageUrl", shipping: "shippingCost", delivery: "deliveryTime", condition: "condition", stock: "inStock", merchant: "programName" },
-  daisycon: { id: "id", mpid: "sku", ean: "ean", title: "title", url: "link", deeplink: "link", price: "price", currency: "currency", image: "image_default", shipping: "price_shipping", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "program_name" },
-  tradetracker: { id: "productID", mpid: "sku", ean: "EAN", title: "name", url: "productURL", deeplink: "productURL", price: "price", currency: "currency", image: "imageURL", shipping: "deliveryCosts", delivery: "deliveryTime", condition: "condition", stock: "stock", merchant: "campaignName" },
-  partnerize: { id: "product_id", mpid: "product_id", ean: "gtin", title: "product_name", url: "product_url", deeplink: "tracking_url", price: "price", currency: "currency", image: "image_url", shipping: "shipping_cost", delivery: "delivery_time", condition: "condition", stock: "availability", merchant: "merchant_name" },
-  cj: { id: "ID", mpid: "SKU", ean: "GTIN", title: "TITLE", url: "LINK", deeplink: "LINK", price: "PRICE", currency: "CURRENCY", image: "IMAGE_LINK", shipping: "SHIPPING_PRICE", delivery: "SHIPPING_LABEL", condition: "CONDITION", stock: "AVAILABILITY", merchant: "PROGRAM_NAME" },
-  impact: { id: "Product ID", mpid: "Product ID", ean: "GTIN", title: "Product Name", url: "Product URL", deeplink: "Product URL", price: "Current Price", currency: "Currency", image: "Image URL", shipping: "Shipping Rate", delivery: "Shipping Label", condition: "Condition", stock: "Stock Availability", merchant: "Campaign Name" },
+  awin: { id: "aw_product_id", mpid: "merchant_product_id", ean: "ean", title: "product_name", url: "merchant_deep_link", deeplink: "aw_deep_link", price: "search_price", currency: "currency", image: "merchant_image_url", shipping: "delivery_cost", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "merchant_name", list: "rrp_price" },
+  tradedoubler: { id: "TDProductId", mpid: "sku", ean: "ean", title: "name", url: "productUrl", deeplink: "productUrl", price: "price", currency: "currency", image: "imageUrl", shipping: "shippingCost", delivery: "deliveryTime", condition: "condition", stock: "inStock", merchant: "programName", list: "previousPrice" },
+  daisycon: { id: "id", mpid: "sku", ean: "ean", title: "title", url: "link", deeplink: "link", price: "price", currency: "currency", image: "image_default", shipping: "price_shipping", delivery: "delivery_time", condition: "condition", stock: "in_stock", merchant: "program_name", list: "price_old" },
+  tradetracker: { id: "productID", mpid: "sku", ean: "EAN", title: "name", url: "productURL", deeplink: "productURL", price: "price", currency: "currency", image: "imageURL", shipping: "deliveryCosts", delivery: "deliveryTime", condition: "condition", stock: "stock", merchant: "campaignName", list: "fromPrice" },
+  partnerize: { id: "product_id", mpid: "product_id", ean: "gtin", title: "product_name", url: "product_url", deeplink: "tracking_url", price: "price", currency: "currency", image: "image_url", shipping: "shipping_cost", delivery: "delivery_time", condition: "condition", stock: "availability", merchant: "merchant_name", list: "rrp" },
+  cj: { id: "ID", mpid: "SKU", ean: "GTIN", title: "TITLE", url: "LINK", deeplink: "LINK", price: "PRICE", currency: "CURRENCY", image: "IMAGE_LINK", shipping: "SHIPPING_PRICE", delivery: "SHIPPING_LABEL", condition: "CONDITION", stock: "AVAILABILITY", merchant: "PROGRAM_NAME", sale: "SALE_PRICE" },
+  impact: { id: "Product ID", mpid: "Product ID", ean: "GTIN", title: "Product Name", url: "Product URL", deeplink: "Product URL", price: "Current Price", currency: "Currency", image: "Image URL", shipping: "Shipping Rate", delivery: "Shipping Label", condition: "Condition", stock: "Stock Availability", merchant: "Campaign Name", list: "Original Price" },
 };
 
 const toNumber = (v: unknown) => {
@@ -59,7 +59,12 @@ async function ingest(src: Source) {
 
   for await (const rec of parser as AsyncIterable<Record<string, string>>) {
     rows++;
-    const rawUrl = rec[cols.url], price = toNumber(rec[cols.price]), mpid = rec[cols.mpid] || rec[cols.id];
+    const rawUrl = rec[cols.url], mpid = rec[cols.mpid] || rec[cols.id];
+    let price = toNumber(rec[cols.price]);
+    let regular: number | null = null;
+    // Google-Shopping-formaat (CJ): PRICE = normale prijs, SALE_PRICE = actieprijs
+    const sale = cols.sale ? toNumber(rec[cols.sale]) : null;
+    if (price !== null && sale !== null && sale > 0 && sale < price) { regular = price; price = sale; }
     if (!rawUrl || price === null || !mpid || !rec[cols.title]) { skipped++; continue; }
     let url: string;
     try { url = normalizeUrl(rawUrl); } catch { skipped++; continue; }
@@ -77,6 +82,7 @@ async function ingest(src: Source) {
       delivery_text: deliveryText, delivery_min_days: d.min, delivery_max_days: d.max,
       condition: normalizeCondition(rec[cols.condition]) ?? "new", in_stock: inStock,
       merchant: rec[cols.merchant] || src.merchant, updated_at: new Date().toISOString(),
+      list_price: (() => { const lp = regular ?? (cols.list ? toNumber(rec[cols.list]) : null); return lp !== null && lp > price * 1.02 && lp < price * 5 ? lp : null; })(),
     });
     if (batch.length >= 500) await flush();
   }

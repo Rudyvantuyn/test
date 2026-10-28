@@ -21,11 +21,11 @@ export type FeedOffer = {
   id: number; source_id: number; url_hash: string; merchant_product_id: string; ean: string | null; title: string;
   url: string; deeplink: string; price: number; currency: string; image_url: string | null; shipping_cost: number | null;
   delivery_text: string | null; delivery_min_days: number | null; delivery_max_days: number | null; condition: string | null;
-  in_stock: boolean; merchant: string | null; updated_at: string;
+  in_stock: boolean; merchant: string | null; updated_at: string; list_price: number | null;
   feed_sources: { country: string; merchant: string } | { country: string; merchant: string }[];
 };
 
-const COLS = "id,source_id,url_hash,merchant_product_id,ean,title,url,deeplink,price,currency,image_url,shipping_cost,delivery_text,delivery_min_days,delivery_max_days,condition,in_stock,merchant,updated_at,feed_sources!inner(country,merchant)";
+const COLS = "id,source_id,url_hash,merchant_product_id,ean,title,url,deeplink,price,currency,image_url,shipping_cost,delivery_text,delivery_min_days,delivery_max_days,condition,in_stock,merchant,updated_at,list_price,feed_sources!inner(country,merchant)";
 const src = (o: FeedOffer) => (Array.isArray(o.feed_sources) ? o.feed_sources[0] : o.feed_sources);
 
 export async function findFeedOffer(url: URL): Promise<FeedOffer | null> {
@@ -47,6 +47,7 @@ export function snapshot(o: FeedOffer): OfferSnapshot {
     deliveryMinDays: o.delivery_min_days, deliveryMaxDays: o.delivery_max_days, deliveryText: o.delivery_text,
     condition: normalizeCondition(o.condition) ?? "new", inStock: o.in_stock && !stale, deeplink: o.deeplink,
     merchant: o.merchant ?? src(o).merchant,
+    listPrice: o.list_price === null ? null : Number(o.list_price),
   };
 }
 

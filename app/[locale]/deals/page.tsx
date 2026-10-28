@@ -24,7 +24,7 @@ export default async function Deals({ params, searchParams }: { params: Promise<
   const d = t(locale);
   let drops: DropRow[] = [];
   try {
-    let q = db().from("top_drops_24h").select("*").limit(100);
+    let q = db().from(f.view === "promos" ? "current_promos" : "top_drops_24h").select("*").limit(100);
     if (f.country && /^[A-Z]{2}$/.test(f.country)) q = q.eq("country", f.country);
     if (f.retailer && /^[a-z]+$/.test(f.retailer)) q = q.eq("retailer", f.retailer);
     if (f.delivery && /^\d+$/.test(f.delivery)) q = q.lte("delivery_max_days", Number(f.delivery));
@@ -43,10 +43,14 @@ export default async function Deals({ params, searchParams }: { params: Promise<
   return (
     <>
       <h1>{d.dealsTitle}</h1>
-      <p className="lead">{d.dealsLead}</p>
+      <div className="tabs">
+        <Link href={`/${locale}/deals`} className={f.view !== "promos" ? "on" : ""}>{d.promo.tabDrops}</Link>
+        <Link href={`/${locale}/deals?view=promos`} className={f.view === "promos" ? "on" : ""}>{d.promo.tabPromos}</Link>
+      </div>
+      <p className="lead">{f.view === "promos" ? d.promo.lead : d.dealsLead}</p>
       {telegramFor(locale) && <p><a className="tg" href={telegramFor(locale)!} target="_blank" rel="noopener">✈️ {d.telegram.cta}</a></p>}
       <Filters d={d} countries={ALL_COUNTRIES} f={f} action={`/${locale}/deals`} />
-      {drops.length === 0 && <p className="muted">{d.noDeals}</p>}
+      {drops.length === 0 && <p className="muted">{f.view === "promos" ? d.promo.none : d.noDeals}</p>}
       {drops.map((x) => {
         const key = `${x.retailer}-${x.country}-${x.external_id}`;
         const shop = x.merchant || retailerLabel[x.retailer] || new URL(x.url).hostname.replace(/^www\./, "");
@@ -58,6 +62,7 @@ export default async function Deals({ params, searchParams }: { params: Promise<
               <span className="tag">{shop} · {x.country}</span>
               {del && <span className="tag">{del}</span>}
               {x.condition && x.condition !== "new" && <span className="tag">{x.condition}</span>}
+              {f.view === "promos" && <span className="tag promo">{d.promo.badge}</span>}
               <Link href={`/${locale}/p/${key}`}>{x.title}</Link>
               <div>
                 <span className="price">{money(Number(x.new_price), x.currency, locale)}</span>
@@ -66,7 +71,7 @@ export default async function Deals({ params, searchParams }: { params: Promise<
                 {x.shipping_cost !== null && Number(x.shipping_cost) > 0 && <small> + {money(Number(x.shipping_cost), x.currency, locale)}</small>}
               </div>
             </div>
-            <a className="btn" href={`/go/${key}?src=deals`} rel="nofollow sponsored">{d.view}</a>
+            <a className="btn" href={`/go/${key}?src=${f.view === "promos" ? "promos" : "deals"}`} rel="nofollow sponsored">{d.view}</a>
           </div>
         );
       })}

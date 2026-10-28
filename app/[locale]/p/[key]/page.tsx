@@ -93,6 +93,11 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
             {p.shipping_cost !== null && Number(p.shipping_cost) > 0 && <small>+ {fmt(Number(p.shipping_cost))} {d.compare.shipping.toLowerCase()}</small>}{" "}
             {cur !== null && low !== null && cur <= low && h.length > 1 && <span className="badge">{d.lowestEver}</span>}
           </div>
+          {p.list_price !== null && cur !== null && Number(p.list_price) > cur && (
+            <div><span className="tag promo">{d.promo.badge}</span> {d.promo.was} <span className="old">{fmt(Number(p.list_price))}</span>{" "}
+              <strong>-{Math.round(((Number(p.list_price) - cur) / Number(p.list_price)) * 100)}%</strong>
+              {p.promo_until && <small> · {d.promo.until(new Date(p.promo_until).toLocaleDateString(locale))}</small>}</div>
+          )}
           {showHistory && <div className="muted">{d.lowest}: {fmt(low)} · {d.highest}: {fmt(p.highest_price)} · {h.length} {d.measurements}</div>}
           <p style={{ margin: "10px 0 0" }}>
             <a className="btn" href={`/go/${key}?src=page`} rel="nofollow sponsored">{d.viewAt(shopName(p))}</a>

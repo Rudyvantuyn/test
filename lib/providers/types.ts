@@ -14,6 +14,10 @@ export type OfferSnapshot = {
   /** Kant-en-klare affiliate-link (eBay/feeds); anders wordt affiliateLink() gebruikt. */
   deeplink?: string | null;
   merchant?: string | null;
+  /** Adviesprijs of doorgestreepte "van"-prijs; aanwezig = actie. */
+  listPrice?: number | null;
+  /** Einddatum van de actie (YYYY-MM-DD), indien bekend. */
+  promoUntil?: string | null;
 };
 
 export type ResolvedProduct = OfferSnapshot & {

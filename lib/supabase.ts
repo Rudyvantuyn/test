@@ -35,6 +35,8 @@ export type ProductRow = {
   condition: "new" | "used" | "refurbished" | null;
   in_stock: boolean;
   deeplink: string | null;
+  list_price: number | null;
+  promo_until: string | null;
 };
 
 export type WatchRow = {
@@ -77,4 +79,5 @@ export type DropRow = {
   new_price: number;
   total_price: number;
   drop_pct: number;
+  list_price: number | null;
 };

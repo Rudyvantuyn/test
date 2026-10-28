@@ -1,6 +1,6 @@
 import type { Dict } from "@/lib/i18n";
 
-export type FilterState = { country?: string; retailer?: string; delivery?: string; condition?: string; maxPrice?: string; minDrop?: string; sort?: string };
+export type FilterState = { country?: string; retailer?: string; delivery?: string; condition?: string; maxPrice?: string; minDrop?: string; sort?: string; view?: string };
 
 const RETAILERS = ["amazon", "bol", "ebay", "feed", "generic"] as const;
 const RETAILER_LABEL: Record<string, string> = { amazon: "Amazon", bol: "bol.com", ebay: "eBay", feed: "Partner shops", generic: "Other shops" };
@@ -9,6 +9,7 @@ export default function Filters({ d, countries, f, action, showDrop = true }: { 
   const L = d.filters;
   return (
     <form className="filters" method="get" action={action}>
+      {f.view && <input type="hidden" name="view" value={f.view} />}
       <label>{L.country}
         <select name="country" defaultValue={f.country ?? ""}>
           <option value="">{L.all}</option>
