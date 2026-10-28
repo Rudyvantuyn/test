@@ -7,6 +7,7 @@ import { isLocale, money, t } from "@/lib/i18n";
 import { retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
 import { ALL_COUNTRIES } from "@/lib/retailers";
+import { telegramFor } from "@/lib/social";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export default async function Deals({ params, searchParams }: { params: Promise<
     <>
       <h1>{d.dealsTitle}</h1>
       <p className="lead">{d.dealsLead}</p>
+      {telegramFor(locale) && <p><a className="tg" href={telegramFor(locale)!} target="_blank" rel="noopener">✈️ {d.telegram.cta}</a></p>}
       <Filters d={d} countries={ALL_COUNTRIES} f={f} action={`/${locale}/deals`} />
       {drops.length === 0 && <p className="muted">{d.noDeals}</p>}
       {drops.map((x) => {

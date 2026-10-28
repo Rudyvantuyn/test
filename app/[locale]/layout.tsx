@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isLocale, locales, t } from "@/lib/i18n";
+import { telegramFor } from "@/lib/social";
 
 export const dynamicParams = false;
 export function generateStaticParams() {
@@ -25,6 +26,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const d = t(locale);
+  const tg = telegramFor(locale);
   return (
     <html lang={locale}>
       <body>
@@ -42,6 +44,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
         </header>
         <main>{children}</main>
         <footer style={{ textAlign: "center", padding: 24 }}>
+          {tg && <p><a className="tg" href={tg} target="_blank" rel="noopener">✈️ {d.telegram.cta}</a></p>}
           <small>{d.footer}</small>
         </footer>
       </body>
