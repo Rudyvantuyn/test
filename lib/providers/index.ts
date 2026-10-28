@@ -1,9 +1,9 @@
-import { bolProvider } from "./bol";
-import { amazonProvider } from "./amazon";
-import { ebayProvider } from "./ebay";
+import { bolProvider, bolConfigured } from "./bol";
+import { amazonProvider, amazonConfigured, amazonCountryFromHost, asinFromUrl, expandShortLink } from "./amazon";
+import { ebayProvider, ebayConfigured, ebayCountryFromHost } from "./ebay";
 import { genericProvider } from "./generic";
 import { feedProvider, findFeedOffer, offerToProduct } from "./feed";
-import type { PriceProvider, Retailer, ResolvedProduct } from "./types";
+import { PendingSourceError, type PriceProvider, type Retailer, type ResolvedProduct } from "./types";
 
 export * from "./types";
 
@@ -14,12 +14,27 @@ export const providers: Record<Retailer, PriceProvider> = {
 /** Kiest de juiste provider voor gebruikersinvoer en lost het product op. */
 export async function resolveInput(input: string): Promise<ResolvedProduct> {
   const s = input.trim();
-  if (/^\d{13}$/.test(s)) return bolProvider.resolve(s, null);
+  if (/^\d{13}$/.test(s)) {
+    if (!bolConfigured()) throw new PendingSourceError("bol", "NL", s, `https://www.bol.com/nl/nl/s/?searchtext=${s}`);
+    return bolProvider.resolve(s, null);
+  }
   let url: URL;
   try { url = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`); }
   catch { throw new Error("Voer een geldige productlink in"); }
-  const direct = [bolProvider, amazonProvider, ebayProvider].find((p) => p.matches(url));
-  if (direct) return direct.resolve(s, url);
+  if (amazonProvider.matches(url)) {
+    const real = await expandShortLink(url).catch(() => url);
+    const country = amazonCountryFromHost(real.hostname);
+    if (!amazonConfigured(country ?? undefined)) throw new PendingSourceError("amazon", country, asinFromUrl(real), real.toString());
+    return amazonProvider.resolve(s, real);
+  }
+  if (ebayProvider.matches(url)) {
+    if (!ebayConfigured()) throw new PendingSourceError("ebay", ebayCountryFromHost(url.hostname), url.pathname.match(/\/itm\/(?:[^/]+\/)?(\d{9,15})/)?.[1] ?? null, url.toString());
+    return ebayProvider.resolve(s, url);
+  }
+  if (bolProvider.matches(url)) {
+    if (!bolConfigured()) throw new PendingSourceError("bol", url.pathname.startsWith("/be/") ? "BE" : "NL", null, url.toString());
+    return bolProvider.resolve(s, url);
+  }
   const offer = await findFeedOffer(url).catch(() => null); // 1) affiliate-feed (met deeplink)
   if (offer) return offerToProduct(offer);
   return genericProvider.resolve(s, url); // 2) productpagina zelf

@@ -19,6 +19,7 @@ export default function WatchForm({ locale, labels, product = "", currency = "EU
     const res = await fetch("/api/watch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const json = await res.json();
     if (!res.ok) return setState({ busy: false, err: json.error ?? "Error" });
+    if (json.pending) { setState({ busy: false, ok: json.message }); if (!product) form.reset(); return; }
     const price = json.price != null ? new Intl.NumberFormat(undefined, { style: "currency", currency: json.currency ?? "EUR" }).format(json.price) : "";
     setState({ busy: false, ok: labels.success.replace("{title}", json.title).replace("{price}", price ? ` (${price})` : "") });
     if (!product) form.reset();

@@ -40,6 +40,10 @@ export function amazonCountryFromHost(host: string): string | null {
   return hostToCountry[h] ?? null;
 }
 
+export const amazonConfigured = (country?: string) =>
+  !!(process.env.AMAZON_ACCESS_KEY && process.env.AMAZON_SECRET_KEY &&
+     (process.env.AMAZON_PARTNER_TAG || (country && process.env[`AMAZON_PARTNER_TAG_${country}`])));
+
 function creds(country: string) {
   const accessKey = process.env.AMAZON_ACCESS_KEY, secretKey = process.env.AMAZON_SECRET_KEY;
   const tag = process.env[`AMAZON_PARTNER_TAG_${country}`] ?? process.env.AMAZON_PARTNER_TAG;

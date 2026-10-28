@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/supabase";
 import { upsertProduct } from "@/lib/products";
-import { COMPARE_COUNTRIES, ProviderError, findOffersByEan, key as productKey, resolveInput, type ResolvedProduct } from "@/lib/providers";
-import { isLocale } from "@/lib/i18n";
+import { COMPARE_COUNTRIES, PendingSourceError, ProviderError, findOffersByEan, key as productKey, resolveInput, retailerLabel, type ResolvedProduct } from "@/lib/providers";
+import { isLocale, t } from "@/lib/i18n";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -61,6 +61,19 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, key: productKey(r), title: r.title, price: r.price, currency: r.currency, watchId: watch.id, others });
   } catch (e) {
+    if (e instanceof PendingSourceError) {
+      const loc = locale && isLocale(locale) ? locale : "en";
+      const { error: pe } = await db().from("pending_watches").upsert(
+        {
+          email: email.toLowerCase(), url: e.url, retailer: e.retailer, country: e.country, external_id: e.externalId,
+          locale: loc, target_price: targetPrice, max_delivery_days: maxDeliveryDays, condition_filter: conditionFilter,
+          processed_at: null, last_error: null,
+        },
+        { onConflict: "email,url" },
+      );
+      if (pe) return NextResponse.json({ error: pe.message }, { status: 500 });
+      return NextResponse.json({ ok: true, pending: true, message: t(loc).pending(retailerLabel[e.retailer] || e.retailer) }, { status: 202 });
+    }
     const msg = e instanceof Error ? e.message : "Unknown error";
     const status = e instanceof ProviderError ? (e.status >= 400 && e.status < 500 ? e.status : 502) : 400;
     return NextResponse.json({ error: msg }, { status });

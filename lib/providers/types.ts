@@ -56,6 +56,13 @@ export class ProviderError extends Error {
   }
 }
 
+/** Bron herkend maar (nog) niet gekoppeld: aanvraag wordt bewaard en later automatisch verwerkt. */
+export class PendingSourceError extends Error {
+  constructor(public retailer: Retailer, public country: string | null, public externalId: string | null, public url: string) {
+    super(`${retailer} nog niet actief`);
+  }
+}
+
 const TLD_COUNTRY: Record<string, string> = {
   nl: "NL", be: "BE", de: "DE", fr: "FR", it: "IT", es: "ES", uk: "GB", ie: "IE", se: "SE", pl: "PL",
   at: "AT", ch: "CH", dk: "DK", no: "NO", fi: "FI", pt: "PT", cz: "CZ", ca: "CA", au: "AU", jp: "JP",

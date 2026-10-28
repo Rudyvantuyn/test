@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
 import { upsertProduct } from "@/lib/products";
-import { providers, resolveInput } from "@/lib/providers";
+import { PendingSourceError, providers, resolveInput } from "@/lib/providers";
 import { bolConfigured } from "@/lib/providers/bol";
 import { findFeedOffersByEan, offerToProduct } from "@/lib/providers/feed";
 
@@ -93,9 +93,34 @@ async function bolToken(): Promise<string> {
   return ((await res.json()) as { access_token: string }).access_token;
 }
 
+/** Bewaarde aanvragen (bron was nog niet actief) omzetten in echte watches. */
+async function processPending(limit: number) {
+  const supa = db();
+  const { data } = await supa.from("pending_watches").select("*").is("processed_at", null).order("created_at", { ascending: true }).limit(limit);
+  let done = 0;
+  for (const w of data ?? []) {
+    try {
+      const r = await resolveInput(w.url);
+      const productId = await upsertProduct(r);
+      await supa.from("watches").upsert({
+        email: w.email, product_id: productId, locale: w.locale, ean: r.ean ?? null, any_retailer: !!r.ean,
+        max_delivery_days: w.max_delivery_days, condition_filter: w.condition_filter,
+        target_price: w.target_price, mode: w.target_price ? "below" : "any_drop", active: true,
+      }, { onConflict: "email,product_id" });
+      await supa.from("pending_watches").update({ processed_at: new Date().toISOString(), last_error: null }).eq("id", w.id);
+      done++;
+    } catch (e) {
+      if (e instanceof PendingSourceError) continue; // bron nog steeds niet actief: later opnieuw
+      await supa.from("pending_watches").update({ last_error: e instanceof Error ? e.message.slice(0, 300) : "error" }).eq("id", w.id);
+    }
+  }
+  return done;
+}
+
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const out = { categoryPages: 0, feeds: 0, bolPopular: 0 };
+  const out = { pending: 0, categoryPages: 0, feeds: 0, bolPopular: 0 };
+  out.pending = await processPending(50);
   out.categoryPages = await fromCategoryPages(PER_RUN);
   out.feeds = await fromFeeds(PER_RUN * 2);
   out.bolPopular = await fromBolPopular(PER_RUN);
