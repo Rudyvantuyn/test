@@ -19,12 +19,14 @@ const COLORS: Record<string, string> = {
 const UNIT = /^(\d+(?:[.,]\d+)?)(gb|tb|mb|inch|inch|in|cm|mm|m|w|kw|mah|wh|hz|l|ml|kg|g|v|mp)$/;
 const NOISE_MODEL = /^(\d+g|[0-9]+(?:st|nd|rd|th)|gen\d*|v\d)$/;
 
+const COLOR_MOD = new Set(["neon", "licht", "donker", "light", "dark", "hell", "dunkel", "mat", "matt", "glans", "metallic", "pastel"]);
 const strip = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const GENERIC = new Set([
   "koptelefoon", "hoofdtelefoon", "kopfhorer", "headphones", "headphone", "earbuds", "oordopjes", "draadloze", "draadloos", "wireless",
   "bluetooth", "smartphone", "telefoon", "laptop", "notebook", "tablet", "televisie", "tv", "fernseher", "stofzuiger", "staubsauger",
   "nieuw", "new", "neu", "de", "het", "the", "der", "die", "das", "met", "with", "mit", "voor", "for", "fur", "en", "and", "und",
+  "console", "konsole", "spelcomputer", "spielkonsole",
 ]);
 // Alleen expliciete bundels ("+ hoesje", "incl. lader"); "met noise cancelling" is een omschrijving, geen bundel
 const BUNDLE = /\s(?:\+|incl\.?|inclusief|inkl\.?|including)\s/i;
@@ -48,6 +50,11 @@ export function matchKey(title: string): string | null {
     if (/^\d+(?:[.,]\d+)?$/.test(w) && /^(gb|tb|inch|in|cm|mm|w|mah|hz|l|ml|kg|mp)$/.test(next)) { variants.add(`${w.replace(",", ".")}${next === "in" ? "inch" : next}`); i++; continue; }
     const c = COLORS[w.replace(/[^a-z]/g, "")];
     if (c) { variants.add(c); continue; }
+    const parts = w.split("-").map((x) => x.replace(/[^a-z]/g, ""));
+    if (parts.length > 1 && parts.some((x) => COLORS[x]) && parts.every((x) => COLORS[x] || COLOR_MOD.has(x))) {
+      for (const x of parts) if (COLORS[x]) variants.add(COLORS[x]);
+      continue;
+    }
     const clean = w.replace(/[^a-z0-9.-]/g, "");
     const u = clean.match(UNIT);
     if (u) { variants.add(`${u[1].replace(",", ".")}${u[2] === "in" ? "inch" : u[2]}`); continue; }
@@ -72,7 +79,10 @@ export function matchKey(title: string): string | null {
       seq.push(w);
       if (/^\d+$/.test(w) || seq.length >= 3) break;
     }
-    if (!seq.some((w) => /^\d+$/.test(w)) || seq.length < 2) return null;
+    const hasNum = seq.some((w) => /^\d+$/.test(w));
+    // Korte namen zonder nummer ("Nintendo Switch Rood/Blauw", "Switch OLED") mogen, lange vage titels niet
+    const meaningful = plain.filter((w) => w && !GENERIC.has(w) && !NOISE_MODEL.test(w));
+    if (!seq.length || (hasNum ? seq.length < 2 : meaningful.length > 2)) return null;
     model = seq.join("");
   }
   if (bundle) variants.add("bundle");

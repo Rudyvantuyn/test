@@ -8,7 +8,7 @@ const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:300
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export async function sendPriceDropEmail(w: WatchRow, p: ProductRow, key: string, oldPrice: number, newPrice: number) {
+export async function sendPriceDropEmail(w: WatchRow, p: ProductRow, key: string, oldPrice: number, newPrice: number, cross = false) {
   const apiKey = process.env.RESEND_API_KEY, from = process.env.EMAIL_FROM;
   if (!apiKey || !from) throw new Error("RESEND_API_KEY / EMAIL_FROM ontbreken");
   const locale: Locale = isLocale(w.locale) ? w.locale : "en";
@@ -25,7 +25,7 @@ export async function sendPriceDropEmail(w: WatchRow, p: ProductRow, key: string
 
   const html = `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111">
-    <h2 style="margin:0 0 8px">${e.heading}: ${escapeHtml(p.title)}</h2>
+    <h2 style="margin:0 0 8px">${cross ? e.cheaperHeading : e.heading}: ${escapeHtml(p.title)}</h2>
     <p style="margin:0 0 16px;color:#555">${e.now} <strong style="color:#0a7d32;font-size:20px">${fmt(newPrice)}</strong>
       <span style="text-decoration:line-through;color:#999">${fmt(oldPrice)}</span> (-${pct}%)</p>
     <p style="margin:0 0 16px;color:#555">${escapeHtml(shop)}${delivery ? ` · ${escapeHtml(delivery)}` : ""}${shipping}</p>
@@ -39,7 +39,7 @@ export async function sendPriceDropEmail(w: WatchRow, p: ProductRow, key: string
   await new Resend(apiKey).emails.send({
     from,
     to: w.email,
-    subject: e.subject(pct, p.title.slice(0, 70), fmt(newPrice)),
+    subject: cross ? e.cheaperSubject(p.title.slice(0, 60), fmt(newPrice), shop) : e.subject(pct, p.title.slice(0, 70), fmt(newPrice)),
     html,
     headers: { "List-Unsubscribe": `<${unsubUrl}>` },
   });

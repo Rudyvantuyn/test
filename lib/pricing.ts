@@ -47,17 +47,67 @@ export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, sour
     ...p, last_price: price, shipping_cost: o.shippingCost ?? null, delivery_min_days: o.deliveryMinDays ?? null,
     delivery_max_days: o.deliveryMaxDays ?? null, merchant: o.merchant ?? p.merchant, condition: o.condition ?? p.condition,
   };
-  for (const w of (watches ?? []) as WatchRow[]) {
+  const list = (watches ?? []) as WatchRow[];
+  // Alerts via een andere winkel (zelfde product): alleen als het nu goedkoper is dan wat de gebruiker al kan krijgen
+  const crossIds = [...new Set(list.filter((w) => w.product_id !== p.id).map((w) => w.product_id))];
+  const watched = new Map<string, number>();
+  if (crossIds.length) {
+    const { data: wp } = await supa.from("products").select("id,last_price,shipping_cost,in_stock,currency").in("id", crossIds);
+    for (const r of wp ?? []) {
+      if (r.last_price === null || r.currency !== p.currency) continue;
+      watched.set(r.id, r.in_stock ? Number(r.last_price) + Number(r.shipping_cost ?? 0) : Number.POSITIVE_INFINITY);
+    }
+  }
+  const total = price + Number(o.shippingCost ?? 0);
+  for (const w of list) {
+    const cross = w.product_id !== p.id;
+    let compareTo = old;
+    if (cross) {
+      const own = watched.get(w.product_id);
+      if (own === undefined) continue; // andere valuta of onbekend
+      if (!(total < own * 0.99)) continue; // niet echt goedkoper dan de eigen winkel
+      compareTo = Number.isFinite(own) ? own : old;
+    }
     const wants = w.mode === "below"
-      ? w.target_price !== null && price + Number(o.shippingCost ?? 0) <= Number(w.target_price)
-      : (old - price) / old >= MIN_DROP_PCT;
+      ? w.target_price !== null && total <= Number(w.target_price)
+      : cross || (old - price) / old >= MIN_DROP_PCT;
     const alreadyTold = w.last_notified_price !== null && price >= Number(w.last_notified_price);
     if (!wants || alreadyTold) continue;
     try {
-      await sendPriceDropEmail(w, updated, `${p.retailer}-${p.country}-${p.external_id}`, old, price);
+      await sendPriceDropEmail(w, updated, `${p.retailer}-${p.country}-${p.external_id}`, compareTo, price, cross);
       await supa.from("watches").update({ last_notified_price: price, last_notified_at: now }).eq("id", w.id);
       res.emails++;
     } catch (err) { res.errors++; console.error("mail", w.id, err); }
   }
   return res;
+}
+
+/**
+ * Nieuw gevonden aanbieder van een gevolgd product (andere winkel, zelfde EAN of productsleutel):
+ * mail als die nu duidelijk goedkoper is dan de winkel die de gebruiker volgt.
+ */
+export async function notifyNewOffer(p: ProductRow): Promise<number> {
+  if (p.last_price === null || p.in_stock === false) return 0;
+  const supa = db();
+  const { data: watches } = await supa.rpc("watches_for_product", { p_id: p.id });
+  const list = ((watches ?? []) as WatchRow[]).filter((w) => w.product_id !== p.id);
+  if (!list.length) return 0;
+  const { data: wp } = await supa.from("products").select("id,last_price,shipping_cost,in_stock,currency").in("id", [...new Set(list.map((w) => w.product_id))]);
+  const own = new Map((wp ?? []).filter((r) => r.last_price !== null && r.currency === p.currency && r.in_stock)
+    .map((r) => [r.id as string, Number(r.last_price) + Number(r.shipping_cost ?? 0)]));
+  const price = Number(p.last_price), total = price + Number(p.shipping_cost ?? 0);
+  const now = new Date().toISOString();
+  let sent = 0;
+  for (const w of list) {
+    const ownTotal = own.get(w.product_id);
+    if (ownTotal === undefined || !(total < ownTotal * 0.99)) continue;
+    if (w.mode === "below" && !(w.target_price !== null && total <= Number(w.target_price))) continue;
+    if (w.last_notified_price !== null && price >= Number(w.last_notified_price)) continue;
+    try {
+      await sendPriceDropEmail(w, p, `${p.retailer}-${p.country}-${p.external_id}`, ownTotal, price, true);
+      await supa.from("watches").update({ last_notified_price: price, last_notified_at: now }).eq("id", w.id);
+      sent++;
+    } catch (err) { console.error("mail new offer", w.id, err); }
+  }
+  return sent;
 }

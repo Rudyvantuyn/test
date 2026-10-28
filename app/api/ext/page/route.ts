@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
   // Zelfde product elders (EAN of productsleutel), zelfde valuta, op voorraad
   const ean = product?.ean ?? (page.ean && /^\d{13}$/.test(page.ean) ? page.ean : null);
-  const mk = product?.match_key && product.match_key !== "-" ? product.match_key : matchKey(page.title);
+  const mk = product?.match_key && !product.match_key.startsWith("-") ? product.match_key : matchKey(page.title);
   const currency = product?.currency ?? page.currency ?? null;
   const same = await sameProductOffers({ id: product?.id ?? "", ean, match_key: mk, currency: currency ?? "" }, 30);
   const offers = same

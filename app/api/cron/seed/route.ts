@@ -18,7 +18,7 @@ export const maxDuration = 300;
  *  2. feed_offers met EAN die nog geen productpagina hebben
  *  3. bol "populair"-lijsten per categorie (zodra de bol API is geconfigureerd)
  */
-const PER_RUN = 15;
+const PER_RUN = 30;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 function authorized(req: Request) {
@@ -36,7 +36,9 @@ async function fromCategoryPages(limit: number) {
     try {
       const html = await (await fetch(s.url, { headers: { "user-agent": UA, accept: "text/html" }, cache: "no-store" })).text();
       const re = new RegExp(s.link_pattern, "g");
-      const links = [...new Set([...html.matchAll(re)].map((m) => m[0]))].slice(0, 60);
+      const links = [...new Set([...html.matchAll(re)].map((m) => {
+        try { return new URL((m[1] ?? m[0]).replace(/^href="/, "").replace(/"$/, ""), s.url).toString(); } catch { return null; }
+      }).filter((x): x is string => !!x))].slice(0, 60);
       const { data: known } = await supa.from("products").select("url").in("url", links);
       const knownSet = new Set((known ?? []).map((k) => k.url));
       for (const link of links) {
@@ -123,13 +125,17 @@ async function processPending(limit: number) {
 /** Productsleutel invullen voor oudere producten. */
 async function backfillMatchKeys(limit: number) {
   const supa = db();
-  const { data } = await supa.from("products").select("id,title").is("match_key", null).limit(limit);
+  // null = nog nooit berekend; "-" = oude versie zonder sleutel, opnieuw proberen met de verbeterde sleutel
+  const { data } = await supa.from("products").select("id,title").or("match_key.is.null,match_key.eq.-").limit(limit);
   let n = 0;
   for (const r of data ?? []) {
     const k = matchKey(r.title);
-    // "-" = geen sleutel mogelijk, zodat we het product niet elke run opnieuw proberen
-    await supa.from("products").update({ match_key: k ?? "-" }).eq("id", r.id);
-    if (k) n++;
+    // "-2" = geen sleutel mogelijk (huidige versie), zodat we het product niet elke run opnieuw proberen
+    await supa.from("products").update({ match_key: k ?? "-2" }).eq("id", r.id);
+    if (k) {
+      n++;
+      await supa.from("watches").update({ match_key: k }).eq("product_id", r.id).is("match_key", null);
+    }
   }
   return n;
 }
@@ -145,7 +151,7 @@ async function expandWatched(limit: number) {
   for (const p of (prods ?? []) as ProductRow[]) {
     if (done >= limit) break;
     const { count } = await supa.from("products").select("id", { count: "exact", head: true })
-      .or([p.ean ? `ean.eq.${p.ean}` : "", p.match_key && p.match_key !== "-" ? `match_key.eq.${p.match_key}` : ""].filter(Boolean).join(",") || "id.eq.00000000-0000-0000-0000-000000000000")
+      .or([p.ean ? `ean.eq.${p.ean}` : "", p.match_key && !p.match_key.startsWith("-") ? `match_key.eq.${p.match_key}` : ""].filter(Boolean).join(",") || "id.eq.00000000-0000-0000-0000-000000000000")
       .neq("id", p.id);
     if ((count ?? 0) > 0) continue;
     added += await expandOffers(p);

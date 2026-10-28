@@ -1,12 +1,13 @@
-import { db } from "./supabase";
+import { db, type ProductRow } from "./supabase";
 import type { ResolvedProduct } from "./providers/types";
-import { cleanListPrice } from "./pricing";
+import { cleanListPrice, notifyNewOffer } from "./pricing";
 import { matchKey } from "./match";
 
 /** Slaat een opgelost product op (upsert) incl. eerste prijspunt; geeft id + min/max terug. */
 export async function upsertProduct(r: ResolvedProduct, source = "server") {
   const supa = db();
   const now = new Date().toISOString();
+  const { data: existing } = await supa.from("products").select("id").match({ retailer: r.retailer, country: r.country, external_id: r.externalId }).maybeSingle();
   const { data: prod, error } = await supa
     .from("products")
     .upsert(
@@ -29,6 +30,11 @@ export async function upsertProduct(r: ResolvedProduct, source = "server") {
     lowest_price: prod.lowest_price === null ? r.price : Math.min(Number(prod.lowest_price), r.price),
     highest_price: prod.highest_price === null ? r.price : Math.max(Number(prod.highest_price), r.price),
   }).eq("id", prod.id);
+  if (!existing) {
+    // Nieuwe aanbieder: wie hetzelfde product elders volgt, hoort het als het hier goedkoper is
+    const { data: full } = await supa.from("products").select("*").eq("id", prod.id).single();
+    if (full) await notifyNewOffer(full as ProductRow).catch((e) => console.error("notifyNewOffer", e));
+  }
   return prod.id as string;
 }
 

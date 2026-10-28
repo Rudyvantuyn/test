@@ -75,6 +75,8 @@ const dict = {
     productMeta: (t: string) => `${t} prijsgeschiedenis & prijsalert`,
     email: {
       subject: (pct: number, title: string, price: string) => `Prijsdaling (-${pct}%): ${title} nu ${price}`,
+      cheaperSubject: (title: string, price: string, shop: string) => `Goedkoper gevonden: ${title} voor ${price} bij ${shop}`,
+      cheaperHeading: "Goedkoper bij een andere winkel",
       heading: "Prijsdaling",
       now: "Nu",
       cta: (shop: string) => `Bekijk bij ${shop}`,
@@ -155,6 +157,8 @@ const dict = {
     productMeta: (t: string) => `${t} price history & price alert`,
     email: {
       subject: (pct: number, title: string, price: string) => `Price drop (-${pct}%): ${title} now ${price}`,
+      cheaperSubject: (title: string, price: string, shop: string) => `Cheaper elsewhere: ${title} for ${price} at ${shop}`,
+      cheaperHeading: "Cheaper at another store",
       heading: "Price drop",
       now: "Now",
       cta: (shop: string) => `View at ${shop}`,
@@ -235,6 +239,8 @@ const dict = {
     productMeta: (t: string) => `${t} Preisverlauf & Preisalarm`,
     email: {
       subject: (pct: number, title: string, price: string) => `Preisfall (-${pct}%): ${title} jetzt ${price}`,
+      cheaperSubject: (title: string, price: string, shop: string) => `Günstiger gefunden: ${title} für ${price} bei ${shop}`,
+      cheaperHeading: "Günstiger bei einem anderen Shop",
       heading: "Preisfall",
       now: "Jetzt",
       cta: (shop: string) => `Bei ${shop} ansehen`,

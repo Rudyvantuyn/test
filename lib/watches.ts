@@ -15,7 +15,7 @@ export async function createWatch(productId: string, ean: string | null | undefi
       {
         email: o.email.toLowerCase(), product_id: productId, locale: o.locale && isLocale(o.locale) ? o.locale : "en",
         ean: ean ?? null, match_key: title ? matchKey(title) : null,
-        any_retailer: o.anyRetailer && (!!ean || !!(title && matchKey(title))), max_delivery_days: o.maxDeliveryDays,
+        any_retailer: o.anyRetailer, max_delivery_days: o.maxDeliveryDays,
         condition_filter: o.conditionFilter, target_price: o.targetPrice, mode: o.targetPrice ? "below" : "any_drop", active: true,
       },
       { onConflict: "email,product_id" },

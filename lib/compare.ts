@@ -15,7 +15,7 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 export async function sameProductOffers(p: Pick<ProductRow, "id" | "ean" | "match_key" | "currency">, limit = 40): Promise<ProductRow[]> {
   const ors: string[] = [];
   if (p.ean) ors.push(`ean.eq.${p.ean}`);
-  if (p.match_key && p.match_key !== "-") ors.push(`match_key.eq.${p.match_key}`); // "-" = geen sleutel
+  if (p.match_key && !p.match_key.startsWith("-")) ors.push(`match_key.eq.${p.match_key}`); // "-" = geen sleutel
   if (!ors.length) return [];
   let q = db().from("products").select("*").or(ors.join(",")).eq("in_stock", true).not("last_price", "is", null).limit(limit);
   if (p.id) q = q.neq("id", p.id);
@@ -26,7 +26,7 @@ export async function sameProductOffers(p: Pick<ProductRow, "id" | "ean" | "matc
 
 async function searchCoolblue(p: ProductRow): Promise<number> {
   if (!["NL", "BE"].includes(p.country) || /coolblue/i.test(p.merchant ?? "") || /coolblue\./.test(p.url)) return 0;
-  const key = p.match_key && p.match_key !== "-" ? p.match_key : matchKey(p.title);
+  const key = p.match_key && !p.match_key.startsWith("-") ? p.match_key : matchKey(p.title);
   const model = primaryModel(key);
   if (!key || !model) return 0;
   const brand = key.split("|")[0];
