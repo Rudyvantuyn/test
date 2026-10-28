@@ -29,6 +29,7 @@
   .row { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0 } .muted { color: #666; font-size: 12px }
   .price { color: #0a7d32; font-weight: 800 } .offers { margin: 8px 0; padding: 8px; background: #f2fbf5; border-radius: 10px }
   .offers a { color: #0a5d26; font-weight: 600; text-decoration: none } .offers a:hover { text-decoration: underline }
+  .offers { background: #f4f4f8 } .offers .save { color: #0a7d32 }
   input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font: inherit; margin: 4px 0 }
   label.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0 } label.chk input { width: auto; margin: 0 }
   .go { width: 100%; background: #1a1a9c; color: #fff; border: 0; border-radius: 8px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer; margin-top: 6px }
@@ -37,7 +38,7 @@
   .foot { display: flex; justify-content: space-between; margin-top: 8px }
   @media (prefers-color-scheme: dark) {
     .card { background: #1b1b21; color: #eee } .muted { color: #aaa } input, select { background: #111; color: #eee; border-color: #333 }
-    .offers { background: #13281a } .offers a { color: #7be3a0 } .price { color: #4fd27a } .link, .brand { color: #9a9aff }
+    .offers { background: #23232b } .offers a { color: #7be3a0 } .offers .save { color: #4fd27a } .price { color: #4fd27a } .link, .brand { color: #9a9aff }
   }`;
 
   function mount() {
@@ -59,7 +60,7 @@
 
     if (!open) {
       const pill = el("button", { class: "pill", onclick: () => render(page, info, true) }, el("span", { text: `🔻 ${T.follow}` }));
-      if (cheaper) pill.append(el("span", { class: "hint", text: `${money(page.price - cheaper.total, cheaper.currency)} ${T.cheaper.toLowerCase()}` }));
+      if (cheaper) pill.append(el("span", { class: "hint", text: `${money(page.price - cheaper.total, cheaper.currency)} ${T.cheaper}` }));
       wrap.append(pill);
       return;
     }
@@ -72,11 +73,12 @@
     if (info?.lowest) card.append(el("div", { class: "row muted" }, el("span", { text: T.lowest }), el("span", { text: money(info.lowest, info.currency) })));
 
     if (info?.offers?.length) {
-      const box = el("div", { class: "offers" }, el("div", { class: "muted", text: T.cheaper }));
+      const box = el("div", { class: "offers" }, el("div", { class: "muted", text: T.others }));
       for (const o of info.offers) {
-        box.append(el("div", { class: "row" },
-          el("a", { href: o.link, target: "_blank", rel: "noopener", text: `${o.shop} ${o.country}` }),
-          el("span", { text: `${money(o.total, o.currency)}${o.delivery ? ` · ${o.delivery}` : ""}` })));
+        const diff = page.price - o.total;
+        const right = el("span", { text: `${money(o.total, o.currency)}${o.delivery ? ` · ${o.delivery}` : ""}` });
+        if (diff > 0.01) right.append(el("strong", { class: "save", text: ` (${money(diff, o.currency)} ${T.cheaper})` }));
+        box.append(el("div", { class: "row" }, el("a", { href: o.link, target: "_blank", rel: "noopener", text: `${o.shop} ${o.country}` }), right));
       }
       card.append(box);
     }

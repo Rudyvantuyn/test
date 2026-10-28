@@ -66,8 +66,10 @@ export async function POST(req: Request) {
   const mk = product?.match_key && !product.match_key.startsWith("-") ? product.match_key : matchKey(page.title);
   const currency = product?.currency ?? page.currency ?? null;
   const same = await sameProductOffers({ id: product?.id ?? "", ean, match_key: mk, currency: currency ?? "" }, 30);
+  const myShop = product ? shop(product) : pageToProduct(page, id).merchant ?? "";
   const offers = same
     .filter((o) => !(o.retailer === id.retailer && o.external_id === id.externalId))
+    .filter((o) => shop(o).toLowerCase() !== myShop.toLowerCase()) // andere winkels, niet dezelfde winkel
     .map((o) => ({ o, total: Number(o.last_price) + Number(o.shipping_cost ?? 0) }))
     .sort((a, b) => a.total - b.total)
     .slice(0, 3)

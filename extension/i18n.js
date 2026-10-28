@@ -4,7 +4,7 @@
     nl: {
       follow: "Volg prijs", followThis: "Volg deze prijs", email: "Jouw e-mailadres", target: "Mail me onder (optioneel)",
       delivery: "Alleen als levering binnen", any: "maakt niet uit", d1: "morgen", d3: "3 dagen", d7: "een week",
-      anyShop: "Ook bij andere winkels (zelfde product)", lowest: "Laagste ooit", current: "Nu", cheaper: "Elders goedkoper",
+      anyShop: "Ook bij andere winkels (zelfde product)", lowest: "Laagste ooit", current: "Nu", cheaper: "goedkoper", others: "Andere winkels",
       tracked: "Je volgt dit product. We mailen bij een daling.", openPage: "Prijsgeschiedenis bekijken",
       hideSite: "Niet tonen op deze site", error: "Er ging iets mis. Probeer het later opnieuw.",
       settings: "Instellingen", contribute: "Help prijzen actueel houden",
@@ -16,7 +16,7 @@
     en: {
       follow: "Track price", followThis: "Track this price", email: "Your email address", target: "Email me below (optional)",
       delivery: "Only if delivered within", any: "any", d1: "tomorrow", d3: "3 days", d7: "a week",
-      anyShop: "Also at other stores (same product)", lowest: "Lowest ever", current: "Now", cheaper: "Cheaper elsewhere",
+      anyShop: "Also at other stores (same product)", lowest: "Lowest ever", current: "Now", cheaper: "cheaper", others: "Other stores",
       tracked: "You're tracking this product. We'll email you when it drops.", openPage: "View price history",
       hideSite: "Don't show on this site", error: "Something went wrong. Please try again later.",
       settings: "Settings", contribute: "Help keep prices up to date",
@@ -28,7 +28,7 @@
     de: {
       follow: "Preis verfolgen", followThis: "Diesen Preis verfolgen", email: "Deine E-Mail-Adresse", target: "Mail mir unter (optional)",
       delivery: "Nur bei Lieferung innerhalb", any: "egal", d1: "morgen", d3: "3 Tagen", d7: "einer Woche",
-      anyShop: "Auch bei anderen Shops (gleiches Produkt)", lowest: "Tiefster Preis", current: "Jetzt", cheaper: "Woanders günstiger",
+      anyShop: "Auch bei anderen Shops (gleiches Produkt)", lowest: "Tiefster Preis", current: "Jetzt", cheaper: "günstiger", others: "Andere Shops",
       tracked: "Du verfolgst dieses Produkt. Wir mailen dir bei einem Preisfall.", openPage: "Preisverlauf ansehen",
       hideSite: "Auf dieser Seite nicht zeigen", error: "Etwas ist schiefgelaufen. Bitte später erneut versuchen.",
       settings: "Einstellungen", contribute: "Preise aktuell halten helfen",
