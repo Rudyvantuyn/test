@@ -4,6 +4,9 @@ import { upsertProduct } from "@/lib/products";
 import { PendingSourceError, providers, resolveInput } from "@/lib/providers";
 import { bolConfigured } from "@/lib/providers/bol";
 import { findFeedOffersByEan, offerToProduct } from "@/lib/providers/feed";
+import { matchKey } from "@/lib/match";
+import { expandOffers } from "@/lib/compare";
+import type { ProductRow } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -117,10 +120,46 @@ async function processPending(limit: number) {
   return done;
 }
 
+/** Productsleutel invullen voor oudere producten. */
+async function backfillMatchKeys(limit: number) {
+  const supa = db();
+  const { data } = await supa.from("products").select("id,title").is("match_key", null).limit(limit);
+  let n = 0;
+  for (const r of data ?? []) {
+    const k = matchKey(r.title);
+    // "-" = geen sleutel mogelijk, zodat we het product niet elke run opnieuw proberen
+    await supa.from("products").update({ match_key: k ?? "-" }).eq("id", r.id);
+    if (k) n++;
+  }
+  return n;
+}
+
+/** Gevolgde producten zonder andere aanbieders: elders zoeken. */
+async function expandWatched(limit: number) {
+  const supa = db();
+  const { data } = await supa.from("watches").select("product_id").eq("active", true).limit(500);
+  const ids = [...new Set((data ?? []).map((w) => w.product_id as string))];
+  if (!ids.length) return 0;
+  const { data: prods } = await supa.from("products").select("*").in("id", ids).limit(200);
+  let added = 0, done = 0;
+  for (const p of (prods ?? []) as ProductRow[]) {
+    if (done >= limit) break;
+    const { count } = await supa.from("products").select("id", { count: "exact", head: true })
+      .or([p.ean ? `ean.eq.${p.ean}` : "", p.match_key && p.match_key !== "-" ? `match_key.eq.${p.match_key}` : ""].filter(Boolean).join(",") || "id.eq.00000000-0000-0000-0000-000000000000")
+      .neq("id", p.id);
+    if ((count ?? 0) > 0) continue;
+    added += await expandOffers(p);
+    done++;
+  }
+  return added;
+}
+
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const out = { pending: 0, categoryPages: 0, feeds: 0, bolPopular: 0 };
+  const out = { pending: 0, matchKeys: 0, compared: 0, categoryPages: 0, feeds: 0, bolPopular: 0 };
   out.pending = await processPending(50);
+  out.matchKeys = await backfillMatchKeys(500);
+  out.compared = await expandWatched(5);
   out.categoryPages = await fromCategoryPages(PER_RUN);
   out.feeds = await fromFeeds(PER_RUN * 2);
   out.bolPopular = await fromBolPopular(PER_RUN);

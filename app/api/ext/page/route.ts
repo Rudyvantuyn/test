@@ -4,6 +4,8 @@ import { applySnapshot } from "@/lib/pricing";
 import { InstallId, PageSchema, cors, crowdAllowed, findProduct, identityFromPage, pageToProduct, rateOk } from "@/lib/ext";
 import { providers, retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
+import { matchKey } from "@/lib/match";
+import { sameProductOffers } from "@/lib/compare";
 import { isLocale } from "@/lib/i18n";
 
 export const runtime = "nodejs";
@@ -59,25 +61,21 @@ export async function POST(req: Request) {
     }
   }
 
-  // Zelfde product elders (EAN), zelfde valuta, op voorraad
+  // Zelfde product elders (EAN of productsleutel), zelfde valuta, op voorraad
   const ean = product?.ean ?? (page.ean && /^\d{13}$/.test(page.ean) ? page.ean : null);
-  let offers: Record<string, unknown>[] = [];
-  if (ean) {
-    let q = db().from("products").select("*").eq("ean", ean).eq("in_stock", true).not("last_price", "is", null).limit(30);
-    if (product) q = q.neq("id", product.id);
-    const currency = product?.currency ?? page.currency ?? null;
-    if (currency) q = q.eq("currency", currency);
-    const { data } = await q;
-    offers = ((data ?? []) as ProductRow[])
-      .map((o) => ({ o, total: Number(o.last_price) + Number(o.shipping_cost ?? 0) }))
-      .sort((a, b) => a.total - b.total)
-      .slice(0, 3)
-      .map(({ o, total }) => ({
-        shop: shop(o), country: o.country, price: Number(o.last_price), total, currency: o.currency,
-        delivery: deliveryLabel(o.delivery_min_days, o.delivery_max_days, locale) || null,
-        link: `${base}/go/${pkey(o)}?src=ext`,
-      }));
-  }
+  const mk = product?.match_key && product.match_key !== "-" ? product.match_key : matchKey(page.title);
+  const currency = product?.currency ?? page.currency ?? null;
+  const same = await sameProductOffers({ id: product?.id ?? "", ean, match_key: mk, currency: currency ?? "" }, 30);
+  const offers = same
+    .filter((o) => !(o.retailer === id.retailer && o.external_id === id.externalId))
+    .map((o) => ({ o, total: Number(o.last_price) + Number(o.shipping_cost ?? 0) }))
+    .sort((a, b) => a.total - b.total)
+    .slice(0, 3)
+    .map(({ o, total }) => ({
+      shop: shop(o), country: o.country, price: Number(o.last_price), total, currency: o.currency,
+      delivery: deliveryLabel(o.delivery_min_days, o.delivery_max_days, locale) || null,
+      link: `${base}/go/${pkey(o)}?src=ext`,
+    }));
 
   if (!product) return cors(Response.json({ known: false, trackable: true, offers }));
   const history = providers[product.retailer].showHistory;

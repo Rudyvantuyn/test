@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/supabase";
+import { db, type ProductRow } from "@/lib/supabase";
+import { expandOffers } from "@/lib/compare";
 import { upsertProduct } from "@/lib/products";
 import { createWatch, savePending } from "@/lib/watches";
-import { COMPARE_COUNTRIES, PendingSourceError, ProviderError, findOffersByEan, key as productKey, resolveInput, retailerLabel, type ResolvedProduct } from "@/lib/providers";
+import { PendingSourceError, ProviderError, key as productKey, resolveInput, retailerLabel } from "@/lib/providers";
 import { isLocale, t } from "@/lib/i18n";
 
 export const runtime = "nodejs";
@@ -35,18 +36,12 @@ export async function POST(req: Request) {
     const r = await resolveInput(product);
     const productId = await upsertProduct(r);
 
-    // Zelfde product bij andere winkels/landen ophalen voor de vergelijking (best effort, max ~10s)
+    // Zelfde product bij andere winkels ophalen voor de vergelijking (best effort, max ~12s)
     let others = 0;
-    if (r.ean) {
-      const countries = COMPARE_COUNTRIES[r.country] ?? [r.country];
-      const found = await Promise.race([
-        findOffersByEan(r.ean, countries, { retailer: r.retailer, externalId: r.externalId }),
-        new Promise<ResolvedProduct[]>((res) => setTimeout(() => res([]), 10_000)),
-      ]);
-      for (const o of found.slice(0, 25)) { try { await upsertProduct(o); others++; } catch (e) { console.error("upsert other", e); } }
-    }
+    const { data: prodRow } = await db().from("products").select("*").eq("id", productId).single();
+    if (prodRow) others = await Promise.race([expandOffers(prodRow as ProductRow), new Promise<number>((res) => setTimeout(() => res(0), 12_000))]);
 
-    const watchId = await createWatch(productId, r.ean, { email, locale, targetPrice, maxDeliveryDays, anyRetailer, conditionFilter });
+    const watchId = await createWatch(productId, r.ean, { email, locale, targetPrice, maxDeliveryDays, anyRetailer, conditionFilter }, r.title);
 
     return NextResponse.json({ ok: true, key: productKey(r), title: r.title, price: r.price, currency: r.currency, watchId, others });
   } catch (e) {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Filters, { type FilterState } from "@/app/components/Filters";
 import { db, type DropRow } from "@/lib/supabase";
-import { isLocale, money, t } from "@/lib/i18n";
+import { conditionLabel, isLocale, money, t } from "@/lib/i18n";
 import { retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
 import { ALL_COUNTRIES } from "@/lib/retailers";
@@ -61,7 +61,7 @@ export default async function Deals({ params, searchParams }: { params: Promise<
             <div style={{ flex: 1 }}>
               <span className="tag">{shop} · {x.country}</span>
               {del && <span className="tag">{del}</span>}
-              {x.condition && x.condition !== "new" && <span className="tag">{x.condition}</span>}
+              {x.condition && x.condition !== "new" && <span className="tag">{conditionLabel(x.condition, d)}</span>}
               {f.view === "promos" && <span className="tag promo">{d.promo.badge}</span>}
               <Link href={`/${locale}/p/${key}`}>{x.title}</Link>
               <div>

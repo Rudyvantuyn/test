@@ -4,10 +4,11 @@ import { notFound } from "next/navigation";
 import WatchForm from "@/app/components/WatchForm";
 import ProductJsonLd from "@/app/components/ProductJsonLd";
 import { formLabels } from "@/lib/formLabels";
-import { isLocale, money, t, type Locale } from "@/lib/i18n";
+import { conditionLabel, isLocale, money, t, type Locale } from "@/lib/i18n";
 import { parseKey, providers, retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
 import { db, type PriceRow, type ProductRow } from "@/lib/supabase";
+import { sameProductOffers } from "@/lib/compare";
 
 export const revalidate = 900;
 
@@ -22,9 +23,7 @@ async function load(key: string) {
   const h = showHistory
     ? ((await supa.from("price_history").select("price,checked_at").eq("product_id", product.id).order("checked_at", { ascending: true }).limit(500)).data ?? [])
     : [];
-  const others = product.ean
-    ? (((await supa.from("products").select("*").eq("ean", product.ean).neq("id", product.id).eq("in_stock", true).limit(40)).data ?? []) as ProductRow[])
-    : [];
+  const others = await sameProductOffers(product);
   return { p: product, h: h as PriceRow[], showHistory, others };
 }
 
@@ -83,7 +82,7 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
       <ProductJsonLd p={p} offers={all} url={`${base}/${locale}/p/${key}`} />
       <span className="tag">{shopName(p)} · {p.country}</span>
       {del && <span className="tag">{del}</span>}
-      {p.condition && p.condition !== "new" && <span className="tag">{p.condition}</span>}
+      {p.condition && p.condition !== "new" && <span className="tag">{conditionLabel(p.condition, d)}</span>}
       <h1>{p.title}</h1>
       <div className="card">
         {p.image_url && <img src={p.image_url} alt="" />}
@@ -127,7 +126,7 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
                 <td data-label={d.compare.shipping}>{x.shipping_cost === null ? d.compare.unknown : Number(x.shipping_cost) === 0 ? d.compare.free : fmt(Number(x.shipping_cost), x.currency)}</td>
                 <td data-label={d.compare.total}><strong>{fmt(total(x), x.currency)}</strong></td>
                 <td data-label={d.compare.delivery}>{deliveryLabel(x.delivery_min_days, x.delivery_max_days, locale) || d.compare.unknown}</td>
-                <td data-label={d.compare.condition}>{x.condition ?? "–"}</td>
+                <td data-label={d.compare.condition}>{conditionLabel(x.condition, d)}</td>
                 <td className="full"><a className="btn" href={`/go/${pkey(x)}?src=compare`} rel="nofollow sponsored">{d.view}</a></td>
               </tr>
             ))}

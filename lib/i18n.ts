@@ -247,6 +247,11 @@ const dict = {
 } as const;
 
 export type Dict = (typeof dict)[Locale];
+
+/** Conditie in de taal van de bezoeker. */
+export function conditionLabel(c: string | null | undefined, d: { filters: { condNew: string; condUsed: string; condRefurb: string } }): string {
+  return c === "new" ? d.filters.condNew : c === "used" ? d.filters.condUsed : c === "refurbished" ? d.filters.condRefurb : "–";
+}
 export const t = (l: Locale): Dict => dict[l];
 
 export const intlLocale: Record<Locale, string> = { nl: "nl-NL", en: "en-GB", de: "de-DE" };

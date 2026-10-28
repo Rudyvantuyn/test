@@ -1,19 +1,21 @@
 import { db } from "./supabase";
 import { isLocale } from "./i18n";
 import type { PendingSourceError } from "./providers/types";
+import { matchKey } from "./match";
 
 export type WatchOpts = {
   email: string; locale?: string; targetPrice: number | null; maxDeliveryDays: number | null;
   anyRetailer: boolean; conditionFilter: string | null;
 };
 
-export async function createWatch(productId: string, ean: string | null | undefined, o: WatchOpts) {
+export async function createWatch(productId: string, ean: string | null | undefined, o: WatchOpts, title?: string) {
   const { data, error } = await db()
     .from("watches")
     .upsert(
       {
         email: o.email.toLowerCase(), product_id: productId, locale: o.locale && isLocale(o.locale) ? o.locale : "en",
-        ean: ean ?? null, any_retailer: o.anyRetailer && !!ean, max_delivery_days: o.maxDeliveryDays,
+        ean: ean ?? null, match_key: title ? matchKey(title) : null,
+        any_retailer: o.anyRetailer && (!!ean || !!(title && matchKey(title))), max_delivery_days: o.maxDeliveryDays,
         condition_filter: o.conditionFilter, target_price: o.targetPrice, mode: o.targetPrice ? "below" : "any_drop", active: true,
       },
       { onConflict: "email,product_id" },

@@ -37,6 +37,7 @@ export type ProductRow = {
   deeplink: string | null;
   list_price: number | null;
   promo_until: string | null;
+  match_key: string | null;
 };
 
 export type WatchRow = {
@@ -55,6 +56,7 @@ export type WatchRow = {
   any_retailer: boolean;
   max_delivery_days: number | null;
   condition_filter: "new" | "used" | "refurbished" | null;
+  match_key: string | null;
 };
 
 export type PriceRow = { price: number; checked_at: string };

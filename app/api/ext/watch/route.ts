@@ -3,6 +3,8 @@ import { InstallId, PageSchema, cors, crowdAllowed, identityFromPage, pageToProd
 import { PendingSourceError, ProviderError, key as productKey, resolveInput, retailerLabel, type ResolvedProduct } from "@/lib/providers";
 import { genericProvider } from "@/lib/providers/generic";
 import { upsertProduct } from "@/lib/products";
+import { db, type ProductRow } from "@/lib/supabase";
+import { expandOffers } from "@/lib/compare";
 import { createWatch, savePending } from "@/lib/watches";
 import { isLocale, t } from "@/lib/i18n";
 
@@ -45,7 +47,9 @@ export async function POST(req: Request) {
       r = pageToProduct(b.page, id); source = "ext";
     }
     const productId = await upsertProduct(r, source);
-    const watchId = await createWatch(productId, r.ean, opts);
+    const watchId = await createWatch(productId, r.ean, opts, r.title);
+    const { data: prodRow } = await db().from("products").select("*").eq("id", productId).single();
+    if (prodRow) await Promise.race([expandOffers(prodRow as ProductRow), new Promise((res) => setTimeout(res, 8000))]);
     const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
     return cors(Response.json({ ok: true, key: productKey(r), watchId, title: r.title, pageUrl: `${base}/${locale}/p/${productKey(r)}` }));
   } catch (e) {

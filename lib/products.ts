@@ -1,6 +1,7 @@
 import { db } from "./supabase";
 import type { ResolvedProduct } from "./providers/types";
 import { cleanListPrice } from "./pricing";
+import { matchKey } from "./match";
 
 /** Slaat een opgelost product op (upsert) incl. eerste prijspunt; geeft id + min/max terug. */
 export async function upsertProduct(r: ResolvedProduct, source = "server") {
@@ -11,7 +12,7 @@ export async function upsertProduct(r: ResolvedProduct, source = "server") {
     .upsert(
       {
         retailer: r.retailer, country: r.country, external_id: r.externalId, ean: r.ean ?? null,
-        title: r.title, url: r.url, image_url: r.imageUrl ?? null, currency: r.currency,
+        title: r.title, url: r.url, image_url: r.imageUrl ?? null, currency: r.currency, match_key: matchKey(r.title),
         merchant: r.merchant ?? null, shipping_cost: r.shippingCost ?? null,
         delivery_min_days: r.deliveryMinDays ?? null, delivery_max_days: r.deliveryMaxDays ?? null,
         delivery_text: r.deliveryText ?? null, condition: r.condition ?? null, in_stock: r.inStock ?? true,
