@@ -48,8 +48,8 @@ function Chart({ h, currency, locale }: { h: PriceRow[]; currency: string; local
   const pts = h.map((r) => `${(pad + ((+new Date(r.checked_at) - t0) / (t1 - t0 || 1)) * (W - pad * 2)).toFixed(1)},${(H - pad - ((Number(r.price) - min) / span) * (H - pad * 2)).toFixed(1)}`);
   return (
     <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img">
-      <text x={4} y={pad} fontSize="12" fill="currentColor">{money(max, currency, locale)}</text>
-      <text x={4} y={H - pad + 4} fontSize="12" fill="currentColor">{money(min, currency, locale)}</text>
+      <text x={4} y={pad} fontSize="16" fill="currentColor">{money(max, currency, locale)}</text>
+      <text x={4} y={H - pad + 4} fontSize="16" fill="currentColor">{money(min, currency, locale)}</text>
       <polyline fill="none" stroke="currentColor" strokeWidth="2" points={pts.join(" ")} />
     </svg>
   );
@@ -108,25 +108,27 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
         </p>
       )}
       {all.length <= 1 ? <p className="muted">{d.compare.noOthers}</p> : (
-        <table>
+        <div className="table-wrap">
+        <table className="cards">
           <thead><tr><th>{d.compare.shop}</th><th>{d.compare.price}</th><th>{d.compare.shipping}</th><th>{d.compare.total}</th><th>{d.compare.delivery}</th><th>{d.compare.condition}</th><th></th></tr></thead>
           <tbody>
             {all.map((x) => (
               <tr key={x.id}>
-                <td>{x.id === p.id ? <strong>{shopName(x)}</strong> : <Link href={`/${locale}/p/${pkey(x)}`}>{shopName(x)}</Link>} <small>{x.country}</small>
+                <td className="full">{x.id === p.id ? <strong>{shopName(x)}</strong> : <Link href={`/${locale}/p/${pkey(x)}`}>{shopName(x)}</Link>} <small>{x.country}</small>
                   {cheapest?.id === x.id && <span className="badge" style={{ marginLeft: 6 }}>{d.compare.cheapest}</span>}
                   {fast?.id === x.id && fast.id !== cheapest?.id && <span className="badge" style={{ marginLeft: 6, background: "#1a1a9c" }}>{d.compare.fastest}</span>}
                 </td>
-                <td>{fmt(x.last_price, x.currency)}</td>
-                <td>{x.shipping_cost === null ? d.compare.unknown : Number(x.shipping_cost) === 0 ? d.compare.free : fmt(Number(x.shipping_cost), x.currency)}</td>
-                <td><strong>{fmt(total(x), x.currency)}</strong></td>
-                <td>{deliveryLabel(x.delivery_min_days, x.delivery_max_days, locale) || d.compare.unknown}</td>
-                <td>{x.condition ?? "–"}</td>
-                <td><a className="btn" href={`/go/${pkey(x)}?src=compare`} rel="nofollow sponsored">{d.view}</a></td>
+                <td data-label={d.compare.price}>{fmt(x.last_price, x.currency)}</td>
+                <td data-label={d.compare.shipping}>{x.shipping_cost === null ? d.compare.unknown : Number(x.shipping_cost) === 0 ? d.compare.free : fmt(Number(x.shipping_cost), x.currency)}</td>
+                <td data-label={d.compare.total}><strong>{fmt(total(x), x.currency)}</strong></td>
+                <td data-label={d.compare.delivery}>{deliveryLabel(x.delivery_min_days, x.delivery_max_days, locale) || d.compare.unknown}</td>
+                <td data-label={d.compare.condition}>{x.condition ?? "–"}</td>
+                <td className="full"><a className="btn" href={`/go/${pkey(x)}?src=compare`} rel="nofollow sponsored">{d.view}</a></td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <h2>{d.historyTitle}</h2>

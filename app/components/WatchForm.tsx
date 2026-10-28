@@ -31,7 +31,7 @@ export default function WatchForm({ locale, labels, product = "", currency = "EU
       <input name="email" type="email" required placeholder={labels.email} />
       <input name="targetPrice" type="number" step="0.01" min="0" placeholder={`${labels.target} ${currency}`} />
       <div className="opts">
-        <label>{labels.delivery}
+        <label className="sel"><span>{labels.delivery}</span>
           <select name="maxDeliveryDays" defaultValue="">
             <option value="">{labels.any}</option>
             <option value="0">{labels.d0}</option>
@@ -40,8 +40,8 @@ export default function WatchForm({ locale, labels, product = "", currency = "EU
             <option value="7">{labels.d7}</option>
           </select>
         </label>
-        <label><input type="checkbox" name="anyRetailer" defaultChecked={!product || hasEan} /> {labels.anyShop}</label>
-        <label><input type="checkbox" name="conditionFilter" value="new" /> {labels.condition}</label>
+        <label className="chk"><input type="checkbox" name="anyRetailer" defaultChecked={!product || hasEan} /><span>{labels.anyShop}</span></label>
+        <label className="chk"><input type="checkbox" name="conditionFilter" value="new" /><span>{labels.condition}</span></label>
       </div>
       <button disabled={state.busy}>{state.busy ? labels.busy : labels.submit}</button>
       {state.ok && <div className="msg ok">{state.ok}</div>}

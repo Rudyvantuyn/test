@@ -27,19 +27,21 @@ export default async function Stores({ params, searchParams }: { params: Promise
         {ALL_COUNTRIES.map((c) => <Link key={c} href={`/${locale}/stores?country=${c}`} className={country === c ? "on" : ""}>{c}</Link>)}
       </div>
       <p className="muted">{d.stores.count(list.length)}</p>
-      <table>
+      <div className="table-wrap">
+      <table className="cards">
         <thead><tr><th>{d.compare.shop}</th><th>{d.filters.country}</th><th>{d.stores.network}</th><th>{d.stores.commission}</th></tr></thead>
         <tbody>
           {list.map((r) => (
             <tr key={r.domain}>
-              <td><strong>{r.name}</strong> <small className="muted">{r.domain}</small></td>
-              <td><small>{r.countries.includes("*") ? "🌍" : r.countries.join(", ")}</small></td>
-              <td>{NETWORK_LABEL[r.network]}{r.note ? <small className="muted"> · {r.note}</small> : null}</td>
-              <td>{r.commission}</td>
+              <td className="full"><strong>{r.name}</strong> <small className="muted">{r.domain}</small></td>
+              <td data-label={d.filters.country}><small>{r.countries.includes("*") ? "🌍" : r.countries.join(", ")}</small></td>
+              <td data-label={d.stores.network}>{NETWORK_LABEL[r.network]}{r.note ? <small className="muted"> · {r.note}</small> : null}</td>
+              <td data-label={d.stores.commission}>{r.commission}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </>
   );
 }
