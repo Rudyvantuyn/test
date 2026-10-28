@@ -35,6 +35,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
             <Link href={`/${locale}`}>{d.siteName}</Link>
             <Link href={`/${locale}/deals`}>{d.navDeals}</Link>
             <Link href={`/${locale}/stores`}>{d.navStores}</Link>
+            <Link href={`/${locale}/extension`}>{d.navExt}</Link>
             <span className="lang">
               {locales.map((l) => (
                 <Link key={l} href={`/${l}`} hrefLang={l}>{l}</Link>
@@ -45,7 +46,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
         <main>{children}</main>
         <footer style={{ textAlign: "center", padding: 24 }}>
           {tg && <p><a className="tg" href={tg} target="_blank" rel="noopener">✈️ {d.telegram.cta}</a></p>}
-          <small>{d.footer}</small>
+          <small>{d.footer} · <Link href={`/${locale}/privacy`}>{d.privacy.title}</Link></small>
         </footer>
       </body>
     </html>

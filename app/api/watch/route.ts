@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/supabase";
 import { upsertProduct } from "@/lib/products";
+import { createWatch, savePending } from "@/lib/watches";
 import { COMPARE_COUNTRIES, PendingSourceError, ProviderError, findOffersByEan, key as productKey, resolveInput, retailerLabel, type ResolvedProduct } from "@/lib/providers";
 import { isLocale, t } from "@/lib/i18n";
 
@@ -45,33 +46,14 @@ export async function POST(req: Request) {
       for (const o of found.slice(0, 25)) { try { await upsertProduct(o); others++; } catch (e) { console.error("upsert other", e); } }
     }
 
-    const { data: watch, error: we } = await db()
-      .from("watches")
-      .upsert(
-        {
-          email: email.toLowerCase(), product_id: productId, locale: locale && isLocale(locale) ? locale : "en",
-          ean: r.ean ?? null, any_retailer: anyRetailer && !!r.ean, max_delivery_days: maxDeliveryDays,
-          condition_filter: conditionFilter, target_price: targetPrice, mode: targetPrice ? "below" : "any_drop", active: true,
-        },
-        { onConflict: "email,product_id" },
-      )
-      .select("id")
-      .single();
-    if (we) throw we;
+    const watchId = await createWatch(productId, r.ean, { email, locale, targetPrice, maxDeliveryDays, anyRetailer, conditionFilter });
 
-    return NextResponse.json({ ok: true, key: productKey(r), title: r.title, price: r.price, currency: r.currency, watchId: watch.id, others });
+    return NextResponse.json({ ok: true, key: productKey(r), title: r.title, price: r.price, currency: r.currency, watchId, others });
   } catch (e) {
     if (e instanceof PendingSourceError) {
       const loc = locale && isLocale(locale) ? locale : "en";
-      const { error: pe } = await db().from("pending_watches").upsert(
-        {
-          email: email.toLowerCase(), url: e.url, retailer: e.retailer, country: e.country, external_id: e.externalId,
-          locale: loc, target_price: targetPrice, max_delivery_days: maxDeliveryDays, condition_filter: conditionFilter,
-          processed_at: null, last_error: null,
-        },
-        { onConflict: "email,url" },
-      );
-      if (pe) return NextResponse.json({ error: pe.message }, { status: 500 });
+      try { await savePending(e, { email, locale: loc, targetPrice, maxDeliveryDays, anyRetailer, conditionFilter }); }
+      catch (pe) { return NextResponse.json({ error: pe instanceof Error ? pe.message : "error" }, { status: 500 }); }
       return NextResponse.json({ ok: true, pending: true, message: t(loc).pending(retailerLabel[e.retailer] || e.retailer) }, { status: 202 });
     }
     const msg = e instanceof Error ? e.message : "Unknown error";

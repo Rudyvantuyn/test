@@ -17,7 +17,7 @@ export function cleanListPrice(price: number, list: number | null | undefined): 
  * en bij een daling de e-mails naar alle passende watches (zelfde product of zelfde EAN).
  * Gedeeld door de prijscheck-cron en de browserextensie.
  */
-export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, source = "server"): Promise<ApplyResult> {
+export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, source = "server", installId: string | null = null): Promise<ApplyResult> {
   const supa = db();
   const now = new Date().toISOString();
   const res: ApplyResult = { drop: false, emails: 0, errors: 0 };
@@ -27,7 +27,7 @@ export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, sour
   }
   const price = o.price;
   const listPrice = cleanListPrice(price, o.listPrice);
-  await supa.from("price_history").insert({ product_id: p.id, price, source });
+  await supa.from("price_history").insert({ product_id: p.id, price, source, install_id: installId });
   await supa.from("products").update({
     last_price: price, last_checked_at: now,
     lowest_price: p.lowest_price === null ? price : Math.min(Number(p.lowest_price), price),

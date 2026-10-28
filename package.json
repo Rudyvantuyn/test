@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ext:pack": "node scripts/pack-extension.mjs",
+    "prebuild": "node scripts/pack-extension.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",

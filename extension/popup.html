@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 300px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; background: #fff }
+    h1 { font-size: 16px; margin: 0 0 10px; color: #1a1a9c }
+    label { display: block; margin: 10px 0 2px; font-weight: 600 }
+    input[type=email] { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font: inherit }
+    .chk { display: flex; gap: 8px; align-items: flex-start; font-weight: 600 } .chk input { margin-top: 3px }
+    .help { color: #666; font-size: 12px; margin: 2px 0 0 24px }
+    .saved { color: #0a7d32; font-size: 12px; height: 16px; margin-top: 6px }
+    a { color: #1a1a9c } .foot { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px }
+    @media (prefers-color-scheme: dark) { body { background: #1b1b21; color: #eee } input[type=email] { background: #111; color: #eee; border-color: #333 } .help { color: #aaa } a, h1 { color: #9a9aff } }
+  </style>
+</head>
+<body>
+  <h1>PriceDrop</h1>
+  <p id="intro"></p>
+  <label for="email" id="l-email"></label>
+  <input id="email" type="email" autocomplete="email">
+  <label class="chk"><input id="showButton" type="checkbox"> <span id="l-show"></span></label>
+  <label class="chk"><input id="contribute" type="checkbox"> <span id="l-contrib"></span></label>
+  <div class="help" id="h-contrib"></div>
+  <div class="saved" id="saved"></div>
+  <div class="foot"><a id="site" href="https://pricedropalert.app" target="_blank"></a><a id="privacy" href="https://pricedropalert.app/privacy" target="_blank"></a></div>
+  <script src="i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
