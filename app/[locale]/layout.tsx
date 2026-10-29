@@ -46,7 +46,8 @@ export default async function LocaleLayout({ children, params }: { children: Rea
         <main>{children}</main>
         <footer style={{ textAlign: "center", padding: 24 }}>
           {tg && <p><a className="tg" href={tg} target="_blank" rel="noopener">✈️ {d.telegram.cta}</a></p>}
-          <small>{d.footer} · <Link href={`/${locale}/privacy`}>{d.privacy.title}</Link></small>
+          <small>{d.footer} · <Link href={`/${locale}/privacy`}>{d.privacy.title}</Link>
+            {process.env.NEXT_PUBLIC_CONTACT_EMAIL && <> · <a href={`mailto:${process.env.NEXT_PUBLIC_CONTACT_EMAIL}`}>{d.privacy.contact}</a></>}</small>
         </footer>
       </body>
     </html>
