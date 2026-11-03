@@ -9,6 +9,8 @@ import { parseKey, providers, retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
 import { db, type PriceRow, type ProductRow } from "@/lib/supabase";
 import { sameProductOffers } from "@/lib/compare";
+import { findAlternatives, type AltRow } from "@/lib/alternatives";
+import { specLabel, type Category } from "@/lib/specs";
 
 export const revalidate = 900;
 
@@ -24,7 +26,8 @@ async function load(key: string) {
     ? ((await supa.from("price_history").select("price,checked_at").eq("product_id", product.id).order("checked_at", { ascending: true }).limit(500)).data ?? [])
     : [];
   const others = await sameProductOffers(product);
-  return { p: product, h: h as PriceRow[], showHistory, others };
+  const alternatives = await findAlternatives(product as AltRow).catch(() => [] as AltRow[]);
+  return { p: product, h: h as PriceRow[], showHistory, others, alternatives };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; key: string }> }): Promise<Metadata> {
@@ -63,7 +66,7 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
   if (!isLocale(locale)) notFound();
   const data = await load(key).catch(() => null);
   if (!data) notFound();
-  const { p, h, showHistory, others } = data;
+  const { p, h, showHistory, others, alternatives } = data;
   const d = t(locale);
   const fmt = (n: number | null, cur = p.currency) => (n !== null ? money(Number(n), cur, locale) : "–");
   const cur = p.last_price !== null ? Number(p.last_price) : null;
@@ -134,6 +137,38 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
         </table>
         </div>
       )}
+
+      {alternatives.length > 0 && (() => {
+        const cat = (p.category ?? "") as Category;
+        const label = specLabel(cat, p.specs ?? {}, locale);
+        const ownTotal = total(p);
+        return (
+          <section>
+            <h2>{d.alt.title}</h2>
+            <p className="muted">{label ? d.alt.lead(label) : d.alt.leadPlain}</p>
+            {alternatives.map((a) => {
+              const aTotal = total(a);
+              const aLabel = specLabel(cat, a.specs ?? {}, locale);
+              return (
+                <div className="card" key={a.id}>
+                  {a.image_url && <img src={a.image_url} alt="" />}
+                  <div style={{ flex: 1 }}>
+                    <span className="tag">{shopName(a)} · {a.country}</span>
+                    {aLabel && <span className="tag">{aLabel}</span>}
+                    <Link href={`/${locale}/p/${pkey(a)}`}>{a.title}</Link>
+                    <div>
+                      <span className="price">{fmt(aTotal, a.currency)}</span>{" "}
+                      <span className="badge">{fmt(ownTotal - aTotal, a.currency)} {d.alt.cheaper}</span>
+                      {deliveryLabel(a.delivery_min_days, a.delivery_max_days, locale) && <small> · {deliveryLabel(a.delivery_min_days, a.delivery_max_days, locale)}</small>}
+                    </div>
+                  </div>
+                  <a className="btn" href={`/go/${pkey(a)}?src=alt`} rel="nofollow sponsored">{d.view}</a>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })()}
 
       <h2>{d.historyTitle}</h2>
       {!showHistory ? <p className="muted">{d.noHistoryAllowed}</p> : h.length < 2 ? <p className="muted">{d.noHistory}</p> : <Chart h={h} currency={p.currency} locale={locale} />}

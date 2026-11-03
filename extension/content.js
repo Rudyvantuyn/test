@@ -30,6 +30,7 @@
   .price { color: #0a7d32; font-weight: 800 } .offers { margin: 8px 0; padding: 8px; background: #f2fbf5; border-radius: 10px }
   .offers a { color: #0a5d26; font-weight: 600; text-decoration: none } .offers a:hover { text-decoration: underline }
   .offers { background: #f4f4f8 } .offers .save { color: #0a7d32 }
+  .altrow { margin: 4px 0 } .altrow a { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden } .altrow span { font-size: 12px }
   input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font: inherit; margin: 4px 0 }
   label.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0 } label.chk input { width: auto; margin: 0 }
   .go { width: 100%; background: #1a1a9c; color: #fff; border: 0; border-radius: 8px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer; margin-top: 6px }
@@ -79,6 +80,16 @@
         const right = el("span", { text: `${money(o.total, o.currency)}${o.delivery ? ` · ${o.delivery}` : ""}` });
         if (diff > 0.01) right.append(el("strong", { class: "save", text: ` (${money(diff, o.currency)} ${T.cheaper})` }));
         box.append(el("div", { class: "row" }, el("a", { href: o.link, target: "_blank", rel: "noopener", text: `${o.shop} ${o.country}` }), right));
+      }
+      card.append(box);
+    }
+
+    if (info?.alternatives?.length) {
+      const box = el("div", { class: "offers alt" }, el("div", { class: "muted", text: T.alternatives }));
+      for (const a of info.alternatives) {
+        box.append(el("div", { class: "altrow" },
+          el("a", { href: a.link, target: "_blank", rel: "noopener", text: a.title }),
+          el("span", { text: `${money(a.total, a.currency)} · ${a.shop}` }, el("strong", { class: "save", text: ` (${money(page.price - a.total, a.currency)} ${T.cheaper})` }))));
       }
       card.append(box);
     }

@@ -135,6 +135,13 @@ export function parseProductHtml(html: string): Parsed {
     });
   }
   out.title ??= meta(html, "property", "og:title") ?? html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? null;
+  if (out.title && out.title.includes(" | ")) {
+    // Sommige winkels plakken categorie en EAN achter de naam: "LG OLED 55C56LB | Smart TV's | Televisies | 8806096361924"
+    const parts = out.title.split(" | ").map((x) => x.trim());
+    const last = parts[parts.length - 1];
+    if (/^\d{13}$/.test(last)) out.ean ??= last;
+    out.title = parts[0];
+  }
   out.price ??= toNumber(meta(html, "property", "product:price:amount") ?? meta(html, "property", "og:price:amount") ?? meta(html, "itemprop", "price"));
   out.currency ??= meta(html, "property", "product:price:currency") ?? meta(html, "property", "og:price:currency") ?? meta(html, "itemprop", "priceCurrency");
   out.image ??= meta(html, "property", "og:image");

@@ -38,6 +38,8 @@ export type ProductRow = {
   list_price: number | null;
   promo_until: string | null;
   match_key: string | null;
+  category?: string | null;
+  specs?: import("./specs").Specs;
 };
 
 export type WatchRow = {

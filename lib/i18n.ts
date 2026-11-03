@@ -9,6 +9,7 @@ const dict = {
     tagline: "Betaal nooit te veel. Bij geen enkele webshop.",
     lead: "Plak een productlink van Amazon, bol.com of vrijwel elke andere webshop. Wij mailen je zodra de prijs daalt.",
     navDeals: "Grootste dalers",
+    alt: { title: "Goedkopere alternatieven", lead: (spec: string) => `Andere producten met dezelfde kern (${spec}) die minder kosten.`, leadPlain: "Vergelijkbare producten die minder kosten.", cheaper: "goedkoper", details: "Details" },
     navExt: "Extensie",
     ext: {
       title: "Volg prijzen op elke webshop, ook Amazon en bol",
@@ -91,6 +92,7 @@ const dict = {
     tagline: "Never overpay. At any store.",
     lead: "Paste a product link from Amazon, bol.com or almost any other store. We email you the moment the price drops.",
     navDeals: "Biggest drops",
+    alt: { title: "Cheaper alternatives", lead: (spec: string) => `Other products with the same essentials (${spec}) that cost less.`, leadPlain: "Comparable products that cost less.", cheaper: "cheaper", details: "Details" },
     navExt: "Extension",
     ext: {
       title: "Track prices on any store, including Amazon",
@@ -173,6 +175,7 @@ const dict = {
     tagline: "Nie wieder zu viel bezahlen. In keinem Shop.",
     lead: "Füge einen Produktlink von Amazon, bol.com oder fast jedem anderen Shop ein. Wir mailen dir, sobald der Preis fällt.",
     navDeals: "Größte Preisstürze",
+    alt: { title: "Günstigere Alternativen", lead: (spec: string) => `Andere Produkte mit denselben Eckdaten (${spec}), die weniger kosten.`, leadPlain: "Vergleichbare Produkte, die weniger kosten.", cheaper: "günstiger", details: "Details" },
     navExt: "Erweiterung",
     ext: {
       title: "Preise in jedem Shop verfolgen, auch bei Amazon",

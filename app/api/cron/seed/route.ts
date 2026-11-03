@@ -5,6 +5,7 @@ import { PendingSourceError, providers, resolveInput } from "@/lib/providers";
 import { bolConfigured } from "@/lib/providers/bol";
 import { findFeedOffersByEan, offerToProduct } from "@/lib/providers/feed";
 import { matchKey } from "@/lib/match";
+import { classify } from "@/lib/specs";
 import { expandOffers } from "@/lib/compare";
 import type { ProductRow } from "@/lib/supabase";
 
@@ -44,7 +45,7 @@ async function fromCategoryPages(limit: number) {
       for (const link of links) {
         if (created >= limit) break;
         if (knownSet.has(link)) continue;
-        try { await upsertProduct(await resolveInput(link)); created++; } catch (e) { console.error("seed resolve", link, e instanceof Error ? e.message : e); }
+        try { await upsertProduct(await resolveInput(link), "server", s.category ?? null); created++; } catch (e) { console.error("seed resolve", link, e instanceof Error ? e.message : e); }
         await new Promise((r) => setTimeout(r, 700));
       }
       await supa.from("seed_urls").update({ last_run_at: new Date().toISOString(), last_count: created }).eq("id", s.id);
@@ -140,6 +141,20 @@ async function backfillMatchKeys(limit: number) {
   return n;
 }
 
+/** Soort en kenmerken invullen voor producten die dat nog niet hebben ("-" = geen soort herkend). */
+async function backfillCategories(limit: number) {
+  const supa = db();
+  // null = nooit berekend; "-" = oudere herkenning zonder resultaat, opnieuw proberen ("-2" = huidige versie, niets herkend)
+  const { data } = await supa.from("products").select("id,title").or("category.is.null,category.eq.-").limit(limit);
+  let n = 0;
+  for (const r of data ?? []) {
+    const c = classify(r.title);
+    await supa.from("products").update({ category: c.category ?? "-2", specs: c.specs }).eq("id", r.id);
+    if (c.category) n++;
+  }
+  return n;
+}
+
 /** Gevolgde producten zonder andere aanbieders: elders zoeken. */
 async function expandWatched(limit: number) {
   const supa = db();
@@ -162,9 +177,10 @@ async function expandWatched(limit: number) {
 
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const out = { pending: 0, matchKeys: 0, compared: 0, categoryPages: 0, feeds: 0, bolPopular: 0 };
+  const out = { pending: 0, matchKeys: 0, categories: 0, compared: 0, categoryPages: 0, feeds: 0, bolPopular: 0 };
   out.pending = await processPending(50);
   out.matchKeys = await backfillMatchKeys(500);
+  out.categories = await backfillCategories(1000);
   out.compared = await expandWatched(5);
   out.categoryPages = await fromCategoryPages(PER_RUN);
   out.feeds = await fromFeeds(PER_RUN * 2);

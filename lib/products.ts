@@ -2,9 +2,11 @@ import { db, type ProductRow } from "./supabase";
 import type { ResolvedProduct } from "./providers/types";
 import { cleanListPrice, notifyNewOffer } from "./pricing";
 import { matchKey } from "./match";
+import { classify } from "./specs";
 
 /** Slaat een opgelost product op (upsert) incl. eerste prijspunt; geeft id + min/max terug. */
-export async function upsertProduct(r: ResolvedProduct, source = "server") {
+export async function upsertProduct(r: ResolvedProduct, source = "server", categoryHint: string | null = null) {
+  const cls = classify(r.title, categoryHint);
   const supa = db();
   const now = new Date().toISOString();
   const { data: existing } = await supa.from("products").select("id").match({ retailer: r.retailer, country: r.country, external_id: r.externalId }).maybeSingle();
@@ -14,6 +16,7 @@ export async function upsertProduct(r: ResolvedProduct, source = "server") {
       {
         retailer: r.retailer, country: r.country, external_id: r.externalId, ean: r.ean ?? null,
         title: r.title, url: r.url, image_url: r.imageUrl ?? null, currency: r.currency, match_key: matchKey(r.title),
+        category: cls.category, specs: cls.specs,
         merchant: r.merchant ?? null, shipping_cost: r.shippingCost ?? null,
         delivery_min_days: r.deliveryMinDays ?? null, delivery_max_days: r.deliveryMaxDays ?? null,
         delivery_text: r.deliveryText ?? null, condition: r.condition ?? null, in_stock: r.inStock ?? true,

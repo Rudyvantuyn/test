@@ -6,6 +6,8 @@ import { providers, retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
 import { matchKey } from "@/lib/match";
 import { sameProductOffers } from "@/lib/compare";
+import { findAlternatives, type AltRow } from "@/lib/alternatives";
+import { classify } from "@/lib/specs";
 import { isLocale } from "@/lib/i18n";
 
 export const runtime = "nodejs";
@@ -80,7 +82,17 @@ export async function POST(req: Request) {
       link: `${base}/go/${pkey(o)}?src=ext`,
     }));
 
-  if (!product) return cors(Response.json({ known: false, trackable: true, offers }));
+  // Goedkopere alternatieven (zelfde soort en kernkenmerk), ook voor nog onbekende producten
+  const cls = product?.category && !product.category.startsWith("-") ? { category: product.category, specs: product.specs ?? {} } : classify(page.title);
+  const altBase = { ...(product ?? {}), id: product?.id ?? "00000000-0000-0000-0000-000000000000", category: cls.category, specs: cls.specs,
+    last_price: page.price, shipping_cost: product?.shipping_cost ?? null, currency: product?.currency ?? page.currency ?? "EUR",
+    match_key: mk } as AltRow;
+  const alternatives = (await findAlternatives(altBase, 2).catch(() => [] as AltRow[])).map((a) => ({
+    title: a.title, shop: shop(a), price: Number(a.last_price), total: Number(a.last_price) + Number(a.shipping_cost ?? 0), currency: a.currency,
+    link: `${base}/go/${pkey(a)}?src=ext-alt`,
+  }));
+
+  if (!product) return cors(Response.json({ known: false, trackable: true, offers, alternatives }));
   const history = providers[product.retailer].showHistory;
   return cors(Response.json({
     known: true, trackable: true, observed,
@@ -89,6 +101,6 @@ export async function POST(req: Request) {
     lowest: history && product.lowest_price !== null ? Number(product.lowest_price) : null,
     highest: history && product.highest_price !== null ? Number(product.highest_price) : null,
     pageUrl: `${base}/${locale}/p/${pkey(product)}`,
-    offers,
+    offers, alternatives,
   }));
 }
