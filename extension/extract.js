@@ -22,6 +22,14 @@
   const metaContent = (attr, key) => document.querySelector(`meta[${attr}="${key}"]`)?.getAttribute("content") ?? null;
   const str = (v) => (typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null);
 
+  function ratingFrom(ar) {
+    if (!ar || typeof ar !== "object") return {};
+    const v = toNumber(ar.ratingValue); if (!v) return {};
+    const best = toNumber(ar.bestRating) ?? (v <= 5 ? 5 : v <= 10 ? 10 : 100);
+    const r = Math.round((v / best) * 500) / 100;
+    return r > 0 && r <= 5 ? { rating: r, reviewCount: toNumber(ar.reviewCount ?? ar.ratingCount) } : {};
+  }
+
   function walk(node, visit) {
     if (Array.isArray(node)) node.forEach((n) => walk(n, visit));
     else if (node && typeof node === "object") { visit(node); Object.values(node).forEach((v) => walk(v, visit)); }
@@ -51,6 +59,7 @@
           ean: [o.gtin13, o.gtin, o.ean, o.gtin14].map(str).find((x) => x && /^\d{13}$/.test(x)) ?? null,
           inStock: of.availability ? /InStock|LimitedAvailability|OnlineOnly|PreSale/i.test(String(of.availability)) : null,
           condition: str(of.itemCondition)?.replace(/^.*\//, "") ?? null,
+          ...ratingFrom(o.aggregateRating),
         };
       });
       if (out) break;
@@ -84,6 +93,8 @@
       deliveryText: text("#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE") || text("#deliveryBlockMessage") || null,
       inStock: !/niet beschikbaar|currently unavailable|nicht verfügbar|non disponible|no disponible|non disponibile/.test(availability),
       condition: "new", ean: null,
+      rating: (() => { const t = document.querySelector("#acrPopover")?.getAttribute("title") ?? text("#acrPopover"); const n = toNumber((t.match(/^[\d.,]+/) ?? [""])[0]); return n && n <= 5 ? n : null; })(),
+      reviewCount: toNumber(text("#acrCustomerReviewText")),
     };
   }
 
@@ -126,6 +137,7 @@
       ean: d.ean ?? findEanInText(),
       deliveryText: (d.deliveryText ?? deliveryFromText())?.slice(0, 200) ?? null,
       inStock: d.inStock ?? null, condition: d.condition ?? null,
+      rating: d.rating ?? null, reviewCount: d.reviewCount ? Math.round(d.reviewCount) : null,
     };
   };
 })();

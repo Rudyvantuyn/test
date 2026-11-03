@@ -17,6 +17,7 @@ export type Parsed = {
   ean: string | null; inStock: boolean | null; condition: string | null; shippingCost: number | null;
   deliveryMin: number | null; deliveryMax: number | null; deliveryText: string | null; brand: string | null;
   listPrice: number | null; promoUntil: string | null;
+  rating: number | null; reviewCount: number | null;
 };
 
 function toNumber(v: unknown): number | null {
@@ -47,6 +48,16 @@ function meta(html: string, attr: "property" | "name" | "itemprop", key: string)
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null);
 const QV = (v: unknown): number | null => (v && typeof v === "object" ? toNumber((v as Record<string, unknown>).value ?? (v as Record<string, unknown>).maxValue) : toNumber(v));
+
+/** AggregateRating (schaal 5, 10 of 100) omrekenen naar 0-5. */
+export function normalizeRating(ar: Record<string, unknown>): { rating: number; count: number | null } | null {
+  const v = toNumber(ar.ratingValue as string | number);
+  if (v === null || v <= 0) return null;
+  const best = toNumber(ar.bestRating as string | number) ?? (v <= 5 ? 5 : v <= 10 ? 10 : 100);
+  const rating = Math.round((v / best) * 5 * 100) / 100;
+  const count = toNumber((ar.reviewCount ?? ar.ratingCount) as string | number);
+  return rating > 0 && rating <= 5 ? { rating, count: count !== null ? Math.round(count) : null } : null;
+}
 
 /** Geeft het JSON-object terug waarin positie `at` staat (tekst tussen de omsluitende accolades). */
 function enclosingObject(s: string, at: number, maxLen = 3000): string | null {
@@ -93,7 +104,7 @@ export function parseProductHtml(html: string): Parsed {
   const out: Parsed = {
     title: null, price: null, currency: null, image: null, canonical: null, ean: null, inStock: null,
     condition: null, shippingCost: null, deliveryMin: null, deliveryMax: null, deliveryText: null, brand: null,
-    listPrice: null, promoUntil: null,
+    listPrice: null, promoUntil: null, rating: null, reviewCount: null,
   };
   for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     let data: unknown;
@@ -106,6 +117,11 @@ export function parseProductHtml(html: string): Parsed {
       const img = o.image;
       out.image ??= str(img) ?? (Array.isArray(img) ? (img[0] as { url?: string })?.url ?? null : (img as { url?: string })?.url ?? null);
       out.ean ??= [o.gtin13, o.gtin, o.gtin14, o.ean].map(str).find((x) => x && /^\d{13}$/.test(x)) ?? null;
+      const ar = o.aggregateRating as Record<string, unknown> | undefined;
+      if (ar && out.rating === null) {
+        const r = normalizeRating(ar);
+        if (r) { out.rating = r.rating; out.reviewCount = r.count; }
+      }
       const offersRaw = Array.isArray(o.offers) ? o.offers[0] : o.offers;
       if (!offersRaw || typeof offersRaw !== "object") return;
       let of = offersRaw as Record<string, unknown>;
@@ -191,7 +207,7 @@ function toSnapshot(p: Parsed, host: string): OfferSnapshot {
     price: p.price!, shippingCost: p.shippingCost, deliveryMinDays: p.deliveryMin, deliveryMaxDays: p.deliveryMax,
     deliveryText: p.deliveryText, condition: normalizeCondition(p.condition) ?? "new", inStock: p.inStock ?? true,
     merchant: retailerForHost(host)?.name ?? host.replace(/^www\./, ""),
-    listPrice: p.listPrice, promoUntil: p.promoUntil,
+    listPrice: p.listPrice, promoUntil: p.promoUntil, rating: p.rating, reviewCount: p.reviewCount,
   };
 }
 

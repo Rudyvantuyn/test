@@ -40,6 +40,8 @@ export type ProductRow = {
   match_key: string | null;
   category?: string | null;
   specs?: import("./specs").Specs;
+  rating?: number | null;
+  review_count?: number | null;
 };
 
 export type WatchRow = {

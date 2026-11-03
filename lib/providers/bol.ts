@@ -44,6 +44,7 @@ type BolProduct = {
   ean: string; bolProductId: string; title: string; url: string;
   image?: { renditions?: { width: number; url: string }[] };
   offer?: { price: number; deliveryDescription?: string };
+  rating?: number;
 };
 type BolOffer = {
   price: number; condition?: string; url?: string; deliveryDescription?: string;
@@ -64,7 +65,7 @@ function snapshot(o: BolOffer): OfferSnapshot {
 }
 
 async function fullProduct(ean: string, country: string): Promise<ResolvedProduct> {
-  const p = await bolGet<BolProduct>(`/products/${ean}`, country, { "include-image": "true", "include-offer": "true" });
+  const p = await bolGet<BolProduct>(`/products/${ean}`, country, { "include-image": "true", "include-offer": "true", "include-rating": "true" });
   let snap: OfferSnapshot | null = null;
   try { snap = snapshot(await bolGet<BolOffer>(`/products/${ean}/offers/best`, country, { "include-seller": "true" })); }
   catch (e) { if (!(e instanceof ProviderError && e.status === 404)) throw e; }
@@ -73,6 +74,7 @@ async function fullProduct(ean: string, country: string): Promise<ResolvedProduc
     retailer: "bol", country, externalId: p.ean, ean: p.ean, title: p.title, url: p.url,
     imageUrl: (r.find((x) => x.width >= 300) ?? r[r.length - 1])?.url ?? null,
     currency: "EUR",
+    rating: p.rating && p.rating > 0 && p.rating <= 5 ? p.rating : null,
     ...(snap ?? { price: p.offer?.price ?? Number.NaN, inStock: !!p.offer }),
     price: snap?.price ?? p.offer?.price ?? Number.NaN,
   };

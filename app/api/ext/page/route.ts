@@ -89,6 +89,7 @@ export async function POST(req: Request) {
     match_key: mk } as AltRow;
   const alternatives = (await findAlternatives(altBase, 2).catch(() => [] as AltRow[])).map((a) => ({
     title: a.title, shop: shop(a), price: Number(a.last_price), total: Number(a.last_price) + Number(a.shipping_cost ?? 0), currency: a.currency,
+    rating: a.rating != null ? Number(a.rating) : null, reviews: a.review_count ?? null,
     link: `${base}/go/${pkey(a)}?src=ext-alt`,
   }));
 

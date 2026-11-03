@@ -160,6 +160,7 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
                       <span className="price">{fmt(aTotal, a.currency)}</span>{" "}
                       <span className="badge">{fmt(ownTotal - aTotal, a.currency)} {d.alt.cheaper}</span>
                       {deliveryLabel(a.delivery_min_days, a.delivery_max_days, locale) && <small> · {deliveryLabel(a.delivery_min_days, a.delivery_max_days, locale)}</small>}
+                      {a.rating != null && <small> · ★ {Number(a.rating).toFixed(1).replace(".", locale === "en" ? "." : ",")}{a.review_count ? ` (${a.review_count})` : ""}</small>}
                     </div>
                   </div>
                   <a className="btn" href={`/go/${pkey(a)}?src=alt`} rel="nofollow sponsored">{d.view}</a>

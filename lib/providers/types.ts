@@ -18,6 +18,9 @@ export type OfferSnapshot = {
   listPrice?: number | null;
   /** Einddatum van de actie (YYYY-MM-DD), indien bekend. */
   promoUntil?: string | null;
+  /** Gemiddelde beoordeling omgerekend naar 0-5, en aantal beoordelingen. */
+  rating?: number | null;
+  reviewCount?: number | null;
 };
 
 export type ResolvedProduct = OfferSnapshot & {

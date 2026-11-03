@@ -27,6 +27,8 @@ export const PageSchema = z.object({
   inStock: z.boolean().nullish(),
   condition: z.string().max(40).nullish(),
   shippingCost: z.number().min(0).max(10_000).nullish(),
+  rating: z.number().min(0).max(5).nullish(),
+  reviewCount: z.number().int().min(0).max(10_000_000).nullish(),
 });
 export type Page = z.infer<typeof PageSchema>;
 
@@ -91,6 +93,7 @@ export function pageToProduct(page: Page, id: Identity): ResolvedProduct {
     price: page.price, listPrice: page.listPrice ?? null, shippingCost: page.shippingCost ?? null,
     deliveryText: page.deliveryText ?? null, deliveryMinDays: d.min, deliveryMaxDays: d.max,
     condition: normalizeCondition(page.condition) ?? "new", inStock: page.inStock ?? true,
+    rating: page.rating ?? null, reviewCount: page.reviewCount ?? null,
     merchant: id.retailer === "amazon" ? "Amazon" : id.retailer === "bol" ? "bol" : id.retailer === "ebay" ? "eBay" : retailerForHost(host)?.name ?? host.replace(/^www\./, ""),
   };
 }

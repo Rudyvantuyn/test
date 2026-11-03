@@ -89,7 +89,7 @@
       for (const a of info.alternatives) {
         box.append(el("div", { class: "altrow" },
           el("a", { href: a.link, target: "_blank", rel: "noopener", text: a.title }),
-          el("span", { text: `${money(a.total, a.currency)} · ${a.shop}` }, el("strong", { class: "save", text: ` (${money(page.price - a.total, a.currency)} ${T.cheaper})` }))));
+          el("span", { text: `${money(a.total, a.currency)} · ${a.shop}${a.rating ? ` · ★ ${a.rating.toFixed(1)}` : ""}` }, el("strong", { class: "save", text: ` (${money(page.price - a.total, a.currency)} ${T.cheaper})` }))));
       }
       card.append(box);
     }

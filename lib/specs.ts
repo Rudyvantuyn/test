@@ -14,6 +14,7 @@ export type Specs = {
   anc?: boolean;
   family?: string;         // console
   kind?: string;           // stofzuiger / koffiemachine: soort
+  kids?: boolean;          // kinderversie (koptelefoon, tablet, smartwatch)
 };
 export type Classified = { category: Category | null; specs: Specs };
 
@@ -60,6 +61,7 @@ export function classify(title: string, hint?: string | null): Classified {
   else if (has(/\b(stofzuiger|staubsauger|vacuum|robotstofzuiger|steelstofzuiger|saugroboter)\b/)) category = "vacuum";
   else if (has(/\b(koffiemachine|espressomachine|koffiezetapparaat|kaffeemaschine|kaffeevollautomat|nespresso|senseo|dolce gusto|espresso machine)\b/)) category = "coffee";
 
+  if (category && has(/\b(kids|kinder|kinderen|junior|kid's|child|children)\b|\bjr ?\d{3}/)) specs.kids = true;
   switch (category) {
     case "tv": {
       const s = explicitInch(t) ?? tvSizeFromModel(t);
@@ -102,6 +104,7 @@ export function classify(title: string, hint?: string | null): Classified {
 
 /** Mag product b een alternatief zijn voor product a? (zelfde soort, zelfde kernkenmerk) */
 export function comparable(cat: Category, a: Specs, b: Specs): boolean {
+  if (!!a.kids !== !!b.kids) return false; // kinderproduct alleen tegenover kinderproduct
   switch (cat) {
     case "tv": return !!a.size && a.size === b.size;
     case "laptop": return !!a.size && !!b.size && Math.abs(a.size - b.size) <= 1 && (!a.ram || !b.ram || b.ram >= a.ram);
@@ -125,3 +128,6 @@ export function specLabel(cat: Category, s: Specs, lang = "nl"): string {
     default: return "";
   }
 }
+
+/** Ondergrens voor een alternatief als fractie van de eigen prijs: zelfde segment, geen ander soort product. */
+export const MIN_PRICE_RATIO: Partial<Record<Category, number>> = { tv: 0.35, laptop: 0.45, smartphone: 0.35, tablet: 0.4, headphones: 0.4, console: 0.5 };

@@ -1,6 +1,15 @@
 import { db, type ProductRow, type WatchRow } from "./supabase";
 import { sendPriceDropEmail } from "./email";
 import type { OfferSnapshot } from "./providers/types";
+import { findAlternatives, summarize, type AltRow, type AltSummary } from "./alternatives";
+import { retailerLabel } from "./providers";
+
+const shopName = (r: ProductRow) => r.merchant || retailerLabel[r.retailer] || new URL(r.url).hostname.replace(/^www\./, "");
+/** Alternatieven voor in de mail, één keer per product berekend (pas als er echt gemaild wordt). */
+function altsFor(p: ProductRow): () => Promise<AltSummary[]> {
+  let cache: Promise<AltSummary[]> | null = null;
+  return () => (cache ??= findAlternatives(p as AltRow, 3).then((a) => summarize(p as AltRow, a, shopName)).catch(() => []));
+}
 
 const MIN_DROP_PCT = 0.03; // bij "elke daling": alleen mailen vanaf 3%
 
@@ -36,6 +45,7 @@ export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, sour
     delivery_text: o.deliveryText ?? null, condition: o.condition ?? p.condition, in_stock: o.inStock ?? true,
     deeplink: o.deeplink ?? p.deeplink, merchant: o.merchant ?? p.merchant,
     list_price: listPrice, promo_until: listPrice ? o.promoUntil ?? null : null,
+    ...(o.rating ? { rating: o.rating, review_count: o.reviewCount ?? null } : {}),
   }).eq("id", p.id);
 
   const old = p.last_price !== null ? Number(p.last_price) : null;
@@ -59,6 +69,7 @@ export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, sour
     }
   }
   const total = price + Number(o.shippingCost ?? 0);
+  const alts = altsFor(updated);
   for (const w of list) {
     const cross = w.product_id !== p.id;
     let compareTo = old;
@@ -74,7 +85,7 @@ export async function applySnapshot(p: ProductRow, o: OfferSnapshot | null, sour
     const alreadyTold = w.last_notified_price !== null && price >= Number(w.last_notified_price);
     if (!wants || alreadyTold) continue;
     try {
-      await sendPriceDropEmail(w, updated, `${p.retailer}-${p.country}-${p.external_id}`, compareTo, price, cross);
+      await sendPriceDropEmail(w, updated, `${p.retailer}-${p.country}-${p.external_id}`, compareTo, price, cross, await alts());
       await supa.from("watches").update({ last_notified_price: price, last_notified_at: now }).eq("id", w.id);
       res.emails++;
     } catch (err) { res.errors++; console.error("mail", w.id, err); }
@@ -97,6 +108,7 @@ export async function notifyNewOffer(p: ProductRow): Promise<number> {
     .map((r) => [r.id as string, Number(r.last_price) + Number(r.shipping_cost ?? 0)]));
   const price = Number(p.last_price), total = price + Number(p.shipping_cost ?? 0);
   const now = new Date().toISOString();
+  const alts = altsFor(p);
   let sent = 0;
   for (const w of list) {
     const ownTotal = own.get(w.product_id);
@@ -104,7 +116,7 @@ export async function notifyNewOffer(p: ProductRow): Promise<number> {
     if (w.mode === "below" && !(w.target_price !== null && total <= Number(w.target_price))) continue;
     if (w.last_notified_price !== null && price >= Number(w.last_notified_price)) continue;
     try {
-      await sendPriceDropEmail(w, p, `${p.retailer}-${p.country}-${p.external_id}`, ownTotal, price, true);
+      await sendPriceDropEmail(w, p, `${p.retailer}-${p.country}-${p.external_id}`, ownTotal, price, true, await alts());
       await supa.from("watches").update({ last_notified_price: price, last_notified_at: now }).eq("id", w.id);
       sent++;
     } catch (err) { console.error("mail new offer", w.id, err); }
