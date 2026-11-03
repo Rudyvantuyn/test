@@ -4,7 +4,7 @@ import { upsertProduct } from "@/lib/products";
 import { PendingSourceError, providers, resolveInput } from "@/lib/providers";
 import { bolConfigured } from "@/lib/providers/bol";
 import { findFeedOffersByEan, offerToProduct } from "@/lib/providers/feed";
-import { matchKey } from "@/lib/match";
+import { keyOf } from "@/lib/match";
 import { classify } from "@/lib/specs";
 import { expandOffers } from "@/lib/compare";
 import type { ProductRow } from "@/lib/supabase";
@@ -19,7 +19,7 @@ export const maxDuration = 300;
  *  2. feed_offers met EAN die nog geen productpagina hebben
  *  3. bol "populair"-lijsten per categorie (zodra de bol API is geconfigureerd)
  */
-const PER_RUN = 30;
+const PER_RUN = 60;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 function authorized(req: Request) {
@@ -30,7 +30,7 @@ function authorized(req: Request) {
 
 async function fromCategoryPages(limit: number) {
   const supa = db();
-  const { data: seeds } = await supa.from("seed_urls").select("*").eq("enabled", true).order("last_run_at", { ascending: true, nullsFirst: true }).limit(3);
+  const { data: seeds } = await supa.from("seed_urls").select("*").eq("enabled", true).order("last_run_at", { ascending: true, nullsFirst: true }).limit(5);
   let created = 0;
   for (const s of seeds ?? []) {
     if (created >= limit) break;
@@ -130,7 +130,7 @@ async function backfillMatchKeys(limit: number) {
   const { data } = await supa.from("products").select("id,title").or("match_key.is.null,match_key.eq.-").limit(limit);
   let n = 0;
   for (const r of data ?? []) {
-    const k = matchKey(r.title);
+    const k = keyOf(r.title);
     // "-2" = geen sleutel mogelijk (huidige versie), zodat we het product niet elke run opnieuw proberen
     await supa.from("products").update({ match_key: k ?? "-2" }).eq("id", r.id);
     if (k) {

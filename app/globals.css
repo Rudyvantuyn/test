@@ -78,3 +78,6 @@ header nav a { flex:0 0 auto }
 .tabs a { padding:8px 14px; text-decoration:none; color:var(--muted); font-weight:600; border-bottom:3px solid transparent; margin-bottom:-1px }
 .tabs a.on { color:var(--fg); border-bottom-color:var(--brand) }
 .tag.promo { background:#e0242a; color:#fff; border-color:#e0242a }
+
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--brand); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px }
+@keyframes spin { to { transform: rotate(360deg) } }

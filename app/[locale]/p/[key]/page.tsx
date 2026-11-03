@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import WatchForm from "@/app/components/WatchForm";
 import ProductJsonLd from "@/app/components/ProductJsonLd";
+import CompareSearch from "@/app/components/CompareSearch";
 import { formLabels } from "@/lib/formLabels";
 import { conditionLabel, isLocale, money, t, type Locale } from "@/lib/i18n";
 import { parseKey, providers, retailerLabel } from "@/lib/providers";
@@ -114,7 +115,11 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
           {d.compare.cheapest.toLowerCase()}: {fmt(total(cheapest))} ({shopName(cheapest)}, {deliveryLabel(cheapest.delivery_min_days, cheapest.delivery_max_days, locale) || d.compare.unknown})
         </p>
       )}
-      {all.length <= 1 ? <p className="muted">{d.compare.noOthers}</p> : (
+      {all.length <= 1 ? (
+        p.last_compared_at && Date.now() - +new Date(p.last_compared_at) < 12 * 3600_000
+          ? <p className="muted">{d.compare.stillNone}</p>
+          : <CompareSearch productKey={key} labels={{ searching: d.compare.searching, none: d.compare.stillNone }} />
+      ) : (
         <div className="table-wrap">
         <table className="cards">
           <thead><tr><th>{d.compare.shop}</th><th>{d.compare.price}</th><th>{d.compare.shipping}</th><th>{d.compare.total}</th><th>{d.compare.delivery}</th><th>{d.compare.condition}</th><th></th></tr></thead>

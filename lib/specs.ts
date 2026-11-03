@@ -57,7 +57,9 @@ export function classify(title: string, hint?: string | null): Classified {
     || has(/\b(wh-1000|wf-1000|wh-ch|wh-ult|mdr-|ath-m|accentum|jbuds|jr\d{3}|momentum \d|tune \d{3}|live \d{3}|soundcore (life|space|liberty)|marshall (major|milton|monitor|motif)|beats (solo|studio|flex)|bose (qc|quietcomfort|nc)|hd ?\d{3})/)
     || (has(/\banc\b/) && !has(/\b(tv|laptop|tablet|smartphone)\b/))) category = "headphones";
   else if ((has(/\b(tv|televisie|fernseher|television|ambilight|bravia|smart tv|google tv|mini-?led|uhd|nanocell|qned|micro rgb)\b/) || has(/\b(qled|oled)(?=\b|\d)/)
-      || (has(/\bled\b/) && explicitInch(t) !== null)) && !has(/\b(monitor|beamer|projector|switch)\b/)) category = "tv";
+      || (has(/\bled\b/) && explicitInch(t) !== null)
+      || has(/\b(qe|ue|gq|gu|tq)\d{2}[a-z]{1,2}\d{2,4}/) || has(/\b\d{2}(pus|pml|pfs|pqs|oled)\d{3,4}/) || has(/\boled\d{2}[a-z]\d/))
+      && !has(/\b(monitor|beamer|projector|switch|soundbar|theatre bar|theater bar|bar \d|speaker|subwoofer|muurbeugel|wall mount|beugel)\b/)) category = "tv";
   else if (has(/\b(stofzuiger|staubsauger|vacuum|robotstofzuiger|steelstofzuiger|saugroboter)\b/)) category = "vacuum";
   else if (has(/\b(koffiemachine|espressomachine|koffiezetapparaat|kaffeemaschine|kaffeevollautomat|nespresso|senseo|dolce gusto|espresso machine)\b/)) category = "coffee";
 

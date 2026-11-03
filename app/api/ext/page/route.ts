@@ -4,7 +4,7 @@ import { applySnapshot } from "@/lib/pricing";
 import { InstallId, PageSchema, cors, crowdAllowed, findProduct, identityFromPage, pageToProduct, rateOk } from "@/lib/ext";
 import { providers, retailerLabel } from "@/lib/providers";
 import { deliveryLabel } from "@/lib/delivery";
-import { matchKey } from "@/lib/match";
+import { keyOf } from "@/lib/match";
 import { sameProductOffers } from "@/lib/compare";
 import { findAlternatives, type AltRow } from "@/lib/alternatives";
 import { classify } from "@/lib/specs";
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
   // Zelfde product elders (EAN of productsleutel), zelfde valuta, op voorraad
   const ean = product?.ean ?? (page.ean && /^\d{13}$/.test(page.ean) ? page.ean : null);
-  const mk = product?.match_key && !product.match_key.startsWith("-") ? product.match_key : matchKey(page.title);
+  const mk = product?.match_key && !product.match_key.startsWith("-") ? product.match_key : keyOf(page.title);
   const currency = product?.currency ?? page.currency ?? null;
   const same = await sameProductOffers({ id: product?.id ?? "", ean, match_key: mk, currency: currency ?? "" }, 30);
   const myShop = product ? shop(product) : pageToProduct(page, id).merchant ?? "";

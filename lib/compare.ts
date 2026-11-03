@@ -4,10 +4,12 @@
  * en de zoekpagina van Coolblue (NL/BE), de enige grote open winkel met server-side zoekresultaten.
  */
 import { db, type ProductRow } from "./supabase";
-import { matchKey, primaryModel } from "./match";
+import { keyOf, primaryModel } from "./match";
 import { upsertProduct } from "./products";
 import { findOffersByEan, COMPARE_COUNTRIES } from "./providers";
 import { genericProvider } from "./providers/generic";
+import { resolveInput, PendingSourceError } from "./providers";
+import { searchProductPages, webSearchConfigured } from "./websearch";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -26,23 +28,26 @@ export async function sameProductOffers(p: Pick<ProductRow, "id" | "ean" | "matc
 
 async function searchCoolblue(p: ProductRow): Promise<number> {
   if (!["NL", "BE"].includes(p.country) || /coolblue/i.test(p.merchant ?? "") || /coolblue\./.test(p.url)) return 0;
-  const key = p.match_key && !p.match_key.startsWith("-") ? p.match_key : matchKey(p.title);
-  const model = primaryModel(key);
-  if (!key || !model) return 0;
-  const brand = key.split("|")[0];
-  const res = await fetch(`https://www.coolblue.nl/zoeken?query=${encodeURIComponent(`${brand} ${model}`)}`, {
+  const key = p.match_key && !p.match_key.startsWith("-") ? p.match_key : keyOf(p.title);
+  if (!key) return 0;
+  const [brand, part2, part3] = key.split("|");
+  const isTv = /^tv\d+$/.test(part2 ?? "");
+  const model = isTv ? part3 : primaryModel(key);
+  if (!model) return 0;
+  const query = isTv ? `${brand} ${model} ${part2.slice(2)} inch` : `${brand} ${model}`;
+  const res = await fetch(`https://www.coolblue.nl/zoeken?query=${encodeURIComponent(query)}`, {
     headers: { "user-agent": UA, accept: "text/html", "accept-language": "nl-NL,nl;q=0.9" }, cache: "no-store",
   }).catch(() => null);
   if (!res?.ok) return 0;
   const html = await res.text();
   const links = [...new Set([...html.matchAll(/https:\/\/www\.coolblue\.nl\/product\/\d+\/[a-z0-9-]+\.html/g)].map((m) => m[0]))]
-    .filter((l) => l.replace(/-/g, "").includes(model))
+    .filter((l) => isTv || l.replace(/-/g, "").includes(model))
     .slice(0, 4);
   let added = 0;
   for (const link of links) {
     try {
       const r = await genericProvider.resolve(link, new URL(link));
-      if (matchKey(r.title) !== key) continue; // alleen exact hetzelfde product (incl. kleur/opslag)
+      if (keyOf(r.title) !== key) continue; // alleen exact hetzelfde product (incl. kleur/opslag)
       await upsertProduct(r);
       added++;
     } catch { /* volgende */ }
@@ -50,15 +55,37 @@ async function searchCoolblue(p: ProductRow): Promise<number> {
   return added;
 }
 
+/** Zoekmachine: "merk typenummer" bij alle winkels, elke gevonden pagina zelf uitlezen en vergelijken. */
+async function searchWeb(p: ProductRow): Promise<number> {
+  if (!webSearchConfigured()) return 0;
+  const key = p.match_key && !p.match_key.startsWith("-") ? p.match_key : keyOf(p.title);
+  if (!key && !p.ean) return 0;
+  const query = p.ean ?? p.title.replace(/\s*\(\d{4}\)\s*/g, " ").replace(/\s+/g, " ").trim().slice(0, 90);
+  const urls = await searchProductPages(query, p.country, new URL(p.url).hostname, 8);
+  let added = 0;
+  await Promise.all(urls.map(async (u) => {
+    try {
+      const r = await Promise.race([resolveInput(u), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 9000))]);
+      const same = (p.ean && r.ean === p.ean) || (key && keyOf(r.title) === key);
+      if (!same || r.currency !== p.currency) return;
+      await upsertProduct(r);
+      added++;
+    } catch (e) { if (!(e instanceof PendingSourceError)) { /* winkel blokkeert of geen productpagina */ } }
+  }));
+  return added;
+}
+
 /** Zoekt en bewaart andere aanbieders voor een product. Best effort, nooit fataal. */
 export async function expandOffers(p: ProductRow): Promise<number> {
   let added = 0;
+  db().from("products").update({ last_compared_at: new Date().toISOString() }).eq("id", p.id).then(() => undefined, () => undefined);
   try {
     if (p.ean) {
       const found = await findOffersByEan(p.ean, COMPARE_COUNTRIES[p.country] ?? [p.country], { retailer: p.retailer, externalId: p.external_id });
       for (const o of found.slice(0, 20)) { try { await upsertProduct(o); added++; } catch { /* skip */ } }
     }
-    added += await searchCoolblue(p);
+    const [cb, web] = await Promise.all([searchCoolblue(p), searchWeb(p)]);
+    added += cb + web;
   } catch (e) { console.error("expandOffers", p.id, e); }
   return added;
 }

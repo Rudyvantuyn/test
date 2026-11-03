@@ -42,6 +42,7 @@ export type ProductRow = {
   specs?: import("./specs").Specs;
   rating?: number | null;
   review_count?: number | null;
+  last_compared_at?: string | null;
 };
 
 export type WatchRow = {

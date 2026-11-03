@@ -1,3 +1,4 @@
+import { classify } from "./specs";
 /**
  * Productsleutel om hetzelfde product bij verschillende winkels te herkennen, ook zonder EAN.
  * Sleutel = merk | typenummer(s) | variant (opslag, maat, kleur), taalonafhankelijk.
@@ -94,4 +95,50 @@ export function primaryModel(key: string | null): string | null {
   if (!key) return null;
   const models = (key.split("|")[1] ?? "").replace(/^[a-z]+:/, "").split("+");
   return models.sort((a, b) => b.length - a.length)[0] ?? null;
+}
+
+/**
+ * Tv-sleutel: merk | formaat | serie. Winkels noemen dezelfde tv verschillend
+ * ("LG OLED EVO 55G56LS" bij BCC, "LG OLED EVO 55\" G5" bij Coolblue); de serie (G5) is wat telt.
+ */
+export function tvKey(title: string, size: number | undefined): string | null {
+  if (!size) return null;
+  const t = strip(title).replace(/[“”″]/g, '"');
+  const brand = t.split(/\s+/)[0]?.replace(/[^a-z0-9]/g, "");
+  const tokens = t.split(/[\s(),/|"–—]+/).map((w) => w.replace(/[^a-z0-9]/g, "")).filter(Boolean);
+  let series: string | null = null;
+  const sz = String(size);
+  if (brand === "lg") {
+    for (const w of tokens) {
+      const m = w.match(/^(?:oled)?(\d{2,3})([a-z]{1,4})(\d)\d{0,4}[a-z]{0,3}$/);
+      if (m && m[1] === sz) { series = `${m[2]}${m[3]}`; break; }
+    }
+    series ??= tokens.find((w) => /^[a-z]\d$/.test(w)) ?? null; // "G6", "C5"
+  } else if (brand === "samsung") {
+    for (const w of tokens) {
+      const m = w.match(/^(?:qe|gq|ue|gu|tq)?(\d{2,3})([a-z]{1,2}\d{2,4}[a-z]?)[a-z]?$/);
+      if (m && m[1] === sz) { series = m[2]; break; }
+    }
+    series ??= tokens.find((w) => /^(qn\d{2,3}[a-z]|q\d{2}[a-z]|s\d{2}[a-z]|u\d{4}[a-z]|du\d{4}|cu\d{4})$/.test(w)) ?? null;
+  } else if (brand === "philips") {
+    for (const w of tokens) {
+      const m = w.match(/^(?:\d{2,3})?(oled\d{3}|pus\d{4}|pml\d{4}|pfs\d{4}|pqs\d{4}|pus\d{3})/);
+      if (m) { series = m[1]; break; }
+    }
+  } else {
+    for (const w of tokens) {
+      const m = w.match(/^(\d{2,3})([a-z]+\d+[a-z]*)$/);
+      if (m && m[1] === sz) { series = m[2]; break; }
+    }
+  }
+  if (!series) return null;
+  // Tv met soundbar of ander extraatje is een bundel, geen losse tv
+  return `${brand}|tv${sz}|${series}${BUNDLE.test(` ${strip(title)} `) ? "|bundle" : ""}`;
+}
+
+/** Sleutel per product: tv's via tvKey (formaat + serie), de rest via matchKey. */
+export function keyOf(title: string, hint?: string | null): string | null {
+  const cls = classify(title, hint);
+  if (cls.category === "tv") return tvKey(title, cls.specs.size) ?? matchKey(title);
+  return matchKey(title);
 }
